@@ -3,7 +3,7 @@ use std::{net::SocketAddr, ops::ControlFlow};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
-        ConnectInfo, WebSocketUpgrade,
+        ConnectInfo, State, WebSocketUpgrade,
     },
     http::StatusCode,
     response::IntoResponse,
@@ -11,23 +11,24 @@ use axum::{
 
 use mongodb::bson::oid::ObjectId;
 
-use crate::models::Turn;
+use crate::{models::Turn, services::manager::Manager};
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     ConnectInfo(who): ConnectInfo<SocketAddr>,
+    State(manager): State<Manager>,
 ) -> impl IntoResponse {
     tracing::info!(">>>> {who} connected");
 
     ws.on_upgrade(move |socket| async move {
-        match handle(socket, who).await {
+        match handle(socket, who, manager).await {
             Ok(_) => tracing::warn!(">>>> {who} closed normally"),
             Err(e) => tracing::error!(">>>> exited because: {}", e),
         }
     })
 }
 
-async fn handle(socket: WebSocket, who: SocketAddr) -> Result<(), Error> {
+async fn handle(socket: WebSocket, who: SocketAddr, manager: Manager) -> Result<(), Error> {
     Ok(())
 }
 

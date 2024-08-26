@@ -5,7 +5,7 @@ mod services;
 use std::net::{Ipv4Addr, SocketAddr};
 
 use axum::{routing, Router};
-use services::get_mongo_client;
+use services::{get_mongo_client, manager::Manager, GamesRepository};
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -26,11 +26,13 @@ async fn main() {
         .expect("Expected to create mongo client")
         .database("oh_hell");
 
+    let manager = Manager::new(GamesRepository::new(&db));
+
     let app = Router::new()
         .route("/ws", routing::get(infra::ws_handler))
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .fallback(infra::fallback_handler)
-        .with_state(db);
+        .with_state(manager);
 
     let address = (Ipv4Addr::UNSPECIFIED, 3000);
 

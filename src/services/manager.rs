@@ -5,12 +5,27 @@ use tokio::sync::Mutex;
 
 use crate::models::{BiddingError, Game, GameState, Turn, TurnError};
 
+use super::GamesRepository;
+
 #[derive(Clone)]
 pub struct Manager {
     inner: Arc<InnerManager>,
+    repo: GamesRepository,
 }
 
 impl Manager {
+    pub fn new(repo: GamesRepository) -> Self {
+        let inner = InnerManager {
+            game: Mutex::new(GamesManager::new()),
+            lobby: Mutex::new(LobbiesManager::new()),
+        };
+
+        Self {
+            inner: Arc::new(inner),
+            repo,
+        }
+    }
+
     pub async fn create_lobby(&self, id: ObjectId, player_id: ObjectId) -> ObjectId {
         let mut manager = self.inner.lobby.lock().await;
 
@@ -80,19 +95,6 @@ pub enum ManagerError {
     Turn(#[from] TurnError),
     #[error("Error processing bid: {0:?}")]
     Bid(#[from] BiddingError),
-}
-
-impl Manager {
-    pub fn new() -> Self {
-        let inner = InnerManager {
-            game: Mutex::new(GamesManager::new()),
-            lobby: Mutex::new(LobbiesManager::new()),
-        };
-
-        Self {
-            inner: Arc::new(inner),
-        }
-    }
 }
 
 struct InnerManager {

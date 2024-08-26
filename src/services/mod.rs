@@ -1,4 +1,4 @@
-mod manager;
+pub mod manager;
 
 use chrono::{DateTime, Utc};
 use mongodb::{
