@@ -1,5 +1,5 @@
+mod infra;
 mod models;
-mod routes;
 mod services;
 
 use std::net::{Ipv4Addr, SocketAddr};
@@ -27,9 +27,9 @@ async fn main() {
         .database("oh_hell");
 
     let app = Router::new()
-        .route("/ws", routing::get(routes::ws_handler))
+        .route("/ws", routing::get(infra::ws_handler))
         .layer(tower_http::trace::TraceLayer::new_for_http())
-        .fallback(routes::fallback_handler)
+        .fallback(infra::fallback_handler)
         .with_state(db);
 
     let address = (Ipv4Addr::UNSPECIFIED, 3000);

@@ -9,10 +9,9 @@ use axum::{
     response::IntoResponse,
 };
 
-use futures::stream::StreamExt;
 use mongodb::bson::oid::ObjectId;
 
-use crate::models::Game;
+use crate::models::Turn;
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
@@ -29,45 +28,23 @@ pub async fn ws_handler(
 }
 
 async fn handle(socket: WebSocket, who: SocketAddr) -> Result<(), Error> {
-    let (mut _sender, mut receiver) = socket.split();
-
-    let a = Game::new(vec![ObjectId::new()]);
-
-    let mut send_task = tokio::spawn(async move { loop {} });
-
-    let mut recv_task = tokio::spawn(async move {
-        while let Some(Ok(msg)) = receiver.next().await {
-            if process_message(msg, who).is_break() {
-                break;
-            }
-        }
-    });
-
-    tokio::select! {
-        rv_a = (&mut send_task) => {
-            match rv_a {
-                Ok(_) => {},
-                Err(e) => tracing::error!("Error sending messages {e:?}")
-            }
-            recv_task.abort();
-        },
-
-        rv_b = (&mut recv_task) => {
-            match rv_b {
-                Ok(_) => {},
-                Err(e) => tracing::error!("Error receiving messages {e:?}")
-            }
-            send_task.abort();
-        }
-    }
-
     Ok(())
 }
 
 fn process_message(msg: Message, who: SocketAddr) -> ControlFlow<(), ()> {
     match msg {
-        Message::Text(t) => {
-            tracing::debug!(">>>> {who} sent str: {t:?}");
+        Message::Text(message) => {
+            tracing::debug!(">>>> {who} sent str: {message:?}");
+
+            let message: ClientMessage = match serde_json::from_str(&message) {
+                Ok(m) => m,
+                Err(_) => return ControlFlow::Break(()),
+            };
+
+            match message {
+                ClientMessage::Lobby(l) => todo!(),
+                ClientMessage::Game(g) => todo!(),
+            };
         }
         Message::Close(c) => {
             let reason = c
@@ -97,4 +74,41 @@ pub enum Error {
     Disconnected(SocketAddr),
     #[error("Database error: {0}")]
     Database(#[from] mongodb::error::Error),
+}
+
+#[derive(serde::Deserialize)]
+pub enum ClientLobbyMessage {
+    RequestLobbies,
+    CreateLobby,
+    JoinLobby { lobby_id: ObjectId },
+    StartGame { game_id: ObjectId },
+}
+
+#[derive(serde::Deserialize)]
+pub enum ClientGameMessage {
+    PlayTurn(Turn),
+    Bid { player_id: ObjectId, bid: usize },
+}
+
+#[derive(serde::Deserialize)]
+pub enum ClientMessage {
+    Lobby(ClientLobbyMessage),
+    Game(ClientGameMessage),
+}
+
+#[derive(serde::Serialize)]
+pub enum ServerLobbyMessage {
+    GameStarted { game_id: ObjectId },
+}
+
+#[derive(serde::Serialize)]
+pub enum ServerGameMessage {
+    PlayerTurn(Turn),
+    PlayerBid { plaeyr_id: ObjectId, bid: usize },
+}
+
+#[derive(serde::Serialize)]
+pub enum ServerMessage {
+    Lobby(ServerLobbyMessage),
+    Game(ServerGameMessage),
 }
