@@ -2,6 +2,7 @@ use std::collections::{BinaryHeap, HashMap};
 
 use super::{Card, Player, Turn};
 use mongodb::bson::oid::ObjectId;
+use strum_macros::Display;
 
 #[derive(Debug)]
 pub struct Game {
@@ -41,7 +42,7 @@ impl Game {
         })
     }
 
-    pub fn advance(&mut self, turn: Turn) -> Result<(), TurnError> {
+    pub fn advance(&mut self, turn: Turn) -> Result<GameState, TurnError> {
         let current_player_id = self.get_current_player_id();
 
         if current_player_id != turn.player_id {
@@ -58,6 +59,10 @@ impl Game {
             return Err(TurnError::PlayersNotBidded);
         }
 
+        if self.players.len() == 1 {
+            return Ok(GameState::Ended(self.players[0]));
+        }
+
         self.current_player_index += 1;
         self.turn_cards.push(turn);
 
@@ -67,8 +72,23 @@ impl Game {
             self.start_new_round();
             // todo needs to adjust the self.current_player_index and hand_index when a player is
             //removed
-            return Ok(());
+            return Ok(GameState::Running);
         }
+
+        Ok(GameState::Running)
+    }
+
+    pub fn bid(&mut self, player: ObjectId, bid: usize) -> Result<(), BiddingError> {
+        let player = self
+            .decks
+            .get_mut(&player)
+            .ok_or(BiddingError::InvalidPlayer)?;
+
+        if player.bid.is_some() {
+            return Err(BiddingError::AlreadyBidded);
+        }
+
+        player.bid = Some(bid);
 
         Ok(())
     }
@@ -155,21 +175,11 @@ impl Game {
 
         self.decks.retain(|_, p| p.lifes != 0)
     }
+}
 
-    fn bid(&mut self, player: ObjectId, bid: usize) -> Result<(), BiddingError> {
-        let player = self
-            .decks
-            .get_mut(&player)
-            .ok_or(BiddingError::InvalidPlayer)?;
-
-        if player.bid.is_some() {
-            return Err(BiddingError::AlreadyBidded);
-        }
-
-        player.bid = Some(bid);
-
-        Ok(())
-    }
+pub enum GameState {
+    Running,
+    Ended(ObjectId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -184,14 +194,14 @@ pub enum GameError {
     TooManyPlayers,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error, Display)]
 pub enum TurnError {
     PlayersNotBidded,
     NotYourTurn,
     NotYourCard,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error, Display)]
 pub enum BiddingError {
     InvalidPlayer,
     AlreadyBidded,
