@@ -2,7 +2,7 @@ mod game;
 
 use std::collections::HashMap;
 
-pub use game::Game;
+pub use game::{BiddingError, Game, GameState, TurnError};
 use mongodb::bson::oid::ObjectId;
 
 use serde::{Deserialize, Serialize};
