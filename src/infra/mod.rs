@@ -203,6 +203,7 @@ pub enum InfraError {
 }
 
 #[derive(serde::Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum ClientLobbyMessage {
     RequestLobbies,
     CreateLobby {
@@ -218,6 +219,7 @@ pub enum ClientLobbyMessage {
 }
 
 #[derive(serde::Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum ClientGameMessage {
     PlayTurn {
         game_id: ObjectId,
@@ -231,6 +233,7 @@ pub enum ClientGameMessage {
 }
 
 #[derive(serde::Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum ClientMessage {
     Lobby(ClientLobbyMessage),
     Game(ClientGameMessage),
@@ -238,6 +241,7 @@ pub enum ClientMessage {
 }
 
 #[derive(serde::Serialize)]
+#[serde(tag = "type", content = "data")]
 pub enum ServerLobbyMessage {
     AvailableLobbies(HashMap<ObjectId, Vec<ObjectId>>),
     GameStarted {
@@ -256,12 +260,14 @@ pub enum ServerLobbyMessage {
 }
 
 #[derive(serde::Serialize)]
+#[serde(tag = "type", content = "data")]
 pub enum ServerGameMessage {
     PlayerTurn { turn: Turn, state: GameState },
     PlayerBidded { player_id: ObjectId, bid: usize },
 }
 
 #[derive(serde::Serialize)]
+#[serde(tag = "type", content = "data")]
 pub enum ServerMessage {
     Lobby(ServerLobbyMessage),
     Game(ServerGameMessage),
