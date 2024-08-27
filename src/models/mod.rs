@@ -11,7 +11,7 @@ use strum::IntoEnumIterator;
 use rand::seq::SliceRandom;
 use strum_macros::EnumIter;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone, Copy)]
 pub struct Turn {
     pub player_id: ObjectId,
     pub card: Card,
