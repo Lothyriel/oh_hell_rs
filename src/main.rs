@@ -29,7 +29,7 @@ async fn main() {
     let manager = Manager::new(GamesRepository::new(&db));
 
     let app = Router::new()
-        .route("/ws", routing::get(infra::ws_handler))
+        .route("/", routing::get(infra::ws_handler))
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .fallback(infra::fallback_handler)
         .with_state(manager);
