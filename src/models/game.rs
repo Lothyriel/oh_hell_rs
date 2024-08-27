@@ -177,6 +177,7 @@ impl Game {
     }
 }
 
+#[derive(Debug, serde::Serialize)]
 pub enum GameState {
     Running,
     Ended(ObjectId),
