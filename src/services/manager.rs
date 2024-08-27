@@ -138,7 +138,7 @@ impl Manager {
 
         let connection = manager.get_mut(auth).ok_or(ManagerError::Unauthorized)?;
 
-        let message = serde_json::to_string(&message).expect("This serialization should not fail");
+        let message = serde_json::to_string(&message)?;
 
         match connection.send(Message::Text(message)).await {
             Ok(_) => Ok(()),
