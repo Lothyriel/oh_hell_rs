@@ -6,7 +6,7 @@ use mongodb::bson::oid::ObjectId;
 use tokio::sync::Mutex;
 
 use crate::{
-    infra::{InfraError, ServerMessage},
+    infra::ServerMessage,
     models::{BiddingError, Game, GameState, Turn, TurnError},
 };
 
@@ -140,13 +140,10 @@ impl Manager {
 
         let message = serde_json::to_string(&message)?;
 
-        match connection.send(Message::Text(message)).await {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                tracing::error!("Error sending message | {e}");
-                Err(ManagerError::PlayerDisconnected)
-            }
-        }
+        connection
+            .send(Message::Text(message))
+            .await
+            .map_err(|_| ManagerError::PlayerDisconnected)
     }
 }
 
@@ -166,8 +163,8 @@ pub enum ManagerError {
     UnexpectedJsonMessage(#[from] serde_json::error::Error),
     #[error("Unexpected message")]
     UnexpectedValidMessage,
-    #[error("Infra error {0}")]
-    InfraError(#[from] InfraError),
+    #[error("Database error: {0}")]
+    Database(#[from] mongodb::error::Error),
     #[error("Unauthorized")]
     Unauthorized,
 }
