@@ -9,7 +9,7 @@ use axum::{
     response::IntoResponse,
 };
 
-use futures::{stream::SplitStream, StreamExt};
+use futures::{stream::SplitStream, SinkExt, StreamExt};
 use mongodb::bson::oid::ObjectId;
 
 use crate::{
@@ -37,9 +37,18 @@ async fn handle_connection(
     who: SocketAddr,
     manager: Manager,
 ) -> Result<(), ManagerError> {
-    let (sender, mut receiver) = socket.split();
+    let (mut sender, mut receiver) = socket.split();
 
     let auth = get_auth(&mut receiver).await?;
+
+    let welcome = ServerMessage::Authorized(auth.clone());
+
+    let welcome = serde_json::to_string(&welcome)?;
+
+    sender
+        .send(Message::Text(welcome))
+        .await
+        .map_err(|_| ManagerError::PlayerDisconnected)?;
 
     manager
         .store_player_connection(auth.clone(), sender)
@@ -49,8 +58,12 @@ async fn handle_connection(
         while let Some(Ok(message)) = receiver.next().await {
             match handle_response(message, who, &manager, &auth).await {
                 Ok(_) => {}
-                Err(e) => {
-                    tracing::error!("{e} | {who} closing connection");
+                Err(error) => {
+                    tracing::error!("{error} | {who} closing connection");
+                    let msg = ServerMessage::Error(error.to_string());
+                    if let Err(error) = manager.send_message(&auth, msg).await {
+                        tracing::error!("{error} | while trying to send error message")
+                    }
                     break;
                 }
             }
@@ -193,12 +206,6 @@ pub async fn fallback_handler() -> (StatusCode, &'static str) {
 const NOT_FOUND_RESPONSE: (StatusCode, &str) =
     (StatusCode::NOT_FOUND, "this resource doesn't exist");
 
-#[derive(thiserror::Error, Debug)]
-pub enum InfraError {
-    #[error("Database error: {0}")]
-    Database(#[from] mongodb::error::Error),
-}
-
 #[derive(serde::Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum ClientLobbyMessage {
@@ -268,4 +275,6 @@ pub enum ServerGameMessage {
 pub enum ServerMessage {
     Lobby(ServerLobbyMessage),
     Game(ServerGameMessage),
+    Authorized(String),
+    Error(String),
 }
