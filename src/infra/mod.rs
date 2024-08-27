@@ -86,10 +86,7 @@ async fn get_auth(receiver: &mut SplitStream<WebSocket>) -> Result<String, Manag
                     }
                 }
             }
-            e => {
-                tracing::error!("Expected auth data, got {0:?}", e);
-                Err(ManagerError::Unauthorized)
-            }
+            _ => Err(ManagerError::InvalidWebsocketMessageType),
         }
     } else {
         Err(ManagerError::Unauthorized)
