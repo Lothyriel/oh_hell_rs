@@ -159,7 +159,7 @@ pub enum ManagerError {
     Bid(#[from] BiddingError),
     #[error("Invalid websocket message type")]
     InvalidWebsocketMessageType,
-    #[error("Unexpected valid json message")]
+    #[error("Unexpected valid json message: {0}")]
     UnexpectedJsonMessage(#[from] serde_json::error::Error),
     #[error("Unexpected message")]
     UnexpectedValidMessage,
