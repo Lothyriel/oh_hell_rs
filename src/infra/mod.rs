@@ -1,4 +1,4 @@
-use std::{collections::HashMap, net::SocketAddr};
+use std::net::SocketAddr;
 
 use axum::{
     extract::{
@@ -113,7 +113,7 @@ async fn process_message(
 ) -> Result<ServerMessage, ManagerError> {
     match msg {
         Message::Text(message) => {
-            tracing::debug!(">>>> {who} sent str: {message:?}");
+            tracing::debug!(">>>> {who} sent text message: {message:?}");
 
             let message: ClientMessage = serde_json::from_str(&message)?;
 
@@ -173,7 +173,13 @@ async fn handle_lobby_message(
 ) -> Result<ServerLobbyMessage, ManagerError> {
     let response = match message {
         ClientLobbyMessage::RequestLobbies => {
-            let lobbies = manager.get_lobbies().await;
+            let lobbies = manager
+                .get_lobbies()
+                .await
+                .into_iter()
+                .map(|(id, players)| Lobby { id, players })
+                .collect();
+
             ServerLobbyMessage::AvailableLobbies(lobbies)
         }
         ClientLobbyMessage::CreateLobby { player_id } => {
@@ -247,7 +253,7 @@ pub enum ClientMessage {
 #[derive(serde::Serialize)]
 #[serde(tag = "type", content = "data")]
 pub enum ServerLobbyMessage {
-    AvailableLobbies(HashMap<ObjectId, Vec<ObjectId>>),
+    AvailableLobbies(Vec<Lobby>),
     GameStarted {
         game_id: ObjectId,
     },
@@ -261,6 +267,12 @@ pub enum ServerLobbyMessage {
     PlayerJoined {
         player_id: ObjectId,
     },
+}
+
+#[derive(serde::Serialize)]
+struct Lobby {
+    id: ObjectId,
+    players: Vec<ObjectId>,
 }
 
 #[derive(serde::Serialize)]
