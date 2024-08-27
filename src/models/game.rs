@@ -229,10 +229,10 @@ mod tests {
             card: first_played_card,
         };
 
-        game.bid(player1, 1).expect("Valid bid");
-        game.bid(player2, 2).expect("Valid bid");
+        game.bid(player1, 1).unwrap();
+        game.bid(player2, 2).unwrap();
 
-        game.advance(first_turn).expect("Valid turn");
+        game.advance(first_turn).unwrap();
 
         assert!(game.turn_cards.len() == 1);
         assert!(game.current_player_index == 1);
@@ -244,7 +244,7 @@ mod tests {
             card: second_played_card,
         };
 
-        game.advance(second_turn).expect("Valid turn");
+        game.advance(second_turn).unwrap();
 
         assert!(game.turn_cards.len() == 2);
         assert!(game.current_player_index == 1);
