@@ -5,7 +5,10 @@ mod services;
 use std::net::{Ipv4Addr, SocketAddr};
 
 use axum::{routing, Router};
-use services::{get_mongo_client, manager::Manager, GamesRepository};
+use services::{
+    manager::Manager,
+    repositories::{auth::AuthRepository, game::GamesRepository, get_mongo_client},
+};
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -26,11 +29,15 @@ async fn main() {
         .expect("Expected to create mongo client")
         .database("oh_hell");
 
-    let manager = Manager::new(GamesRepository::new(&db));
+    let manager = Manager::new(GamesRepository::new(&db), AuthRepository::new(&db));
+
+    let auth_layer = axum::middleware::from_fn(infra::auth::middleware);
 
     let app = Router::new()
-        .route("/", routing::get(infra::ws_handler))
+        .route("/game", routing::get(infra::game::ws_handler))
+        .nest("/lobby", infra::lobby::router().layer(auth_layer))
         .layer(tower_http::trace::TraceLayer::new_for_http())
+        .nest("/auth", infra::auth::router())
         .fallback(infra::fallback_handler)
         .with_state(manager);
 
