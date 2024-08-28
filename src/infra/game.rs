@@ -43,9 +43,7 @@ async fn handle_connection(
 
     ack_auth(&auth, &mut sender).await?;
 
-    manager
-        .store_player_connection(auth.clone(), sender)
-        .await?;
+    manager.store_player_connection(auth.id(), sender).await?;
 
     tokio::spawn(async move {
         while let Some(Ok(message)) = receiver.next().await {

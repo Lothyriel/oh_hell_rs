@@ -83,7 +83,7 @@ impl Manager {
             *manager
                 .players_lobby
                 .get(&player_id)
-                .ok_or_else(|| LobbyError::WrongLobby)?
+                .ok_or(LobbyError::WrongLobby)?
         };
 
         let lobby = manager
@@ -113,7 +113,7 @@ impl Manager {
             *manager
                 .players_lobby
                 .get(player_id)
-                .ok_or_else(|| LobbyError::WrongLobby)?
+                .ok_or(LobbyError::WrongLobby)?
         };
 
         let lobby = manager
@@ -163,12 +163,12 @@ impl Manager {
 
     pub async fn store_player_connection(
         &self,
-        auth: UserClaims,
+        player_id: String,
         sender: Connection,
     ) -> Result<(), ManagerError> {
         let mut manager = self.inner.connections.lock().await;
 
-        manager.insert(auth.id(), sender);
+        manager.insert(player_id, sender);
 
         Ok(())
     }
@@ -264,7 +264,7 @@ impl Lobby {
     }
 
     fn get_game(&mut self) -> Result<&mut Game, LobbyError> {
-        self.game.as_mut().ok_or_else(|| LobbyError::GameNotStarted)
+        self.game.as_mut().ok_or(LobbyError::GameNotStarted)
     }
 }
 
