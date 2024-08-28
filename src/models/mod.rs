@@ -2,7 +2,7 @@ mod game;
 
 use std::collections::HashMap;
 
-pub use game::{BiddingError, Game, GameState, TurnError};
+pub use game::{BiddingError, Game, GameError, GameState, TurnError};
 use mongodb::bson::oid::ObjectId;
 
 use serde::{Deserialize, Serialize};
@@ -11,9 +11,9 @@ use strum::IntoEnumIterator;
 use rand::seq::SliceRandom;
 use strum_macros::EnumIter;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, Clone, Copy)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Turn {
-    pub player_id: ObjectId,
+    pub player_id: String,
     pub card: Card,
 }
 
@@ -43,7 +43,7 @@ struct GameManager {
 
 #[derive(Debug)]
 pub struct Player {
-    id: ObjectId,
+    id: String,
     lifes: u8,
     deck: Vec<Card>,
     bid: Option<usize>,
@@ -51,7 +51,7 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new(id: ObjectId, deck: Vec<Card>) -> Self {
+    pub fn new(id: String, deck: Vec<Card>) -> Self {
         Self {
             lifes: 5,
             deck,
