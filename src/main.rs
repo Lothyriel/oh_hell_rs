@@ -10,6 +10,7 @@ use services::{
     repositories::{auth::AuthRepository, game::GamesRepository, get_mongo_client},
 };
 
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -33,12 +34,21 @@ async fn main() {
 
     let auth_layer = axum::middleware::from_fn(infra::auth::middleware);
 
+    let cors = CorsLayer::new()
+        .allow_origin(AllowOrigin::list(vec![
+            "https://fodinha.click".parse().expect("Valid url"),
+            "localhost".parse().expect("Valid url"),
+        ]))
+        .allow_methods(Any)
+        .allow_headers(Any);
+
     let app = Router::new()
         .route("/game", routing::get(infra::game::ws_handler))
         .nest("/lobby", infra::lobby::router().layer(auth_layer))
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .nest("/auth", infra::auth::router())
         .fallback(infra::fallback_handler)
+        .layer(cors)
         .with_state(manager);
 
     let address = (Ipv4Addr::UNSPECIFIED, 3000);
