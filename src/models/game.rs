@@ -1,31 +1,31 @@
 use std::collections::{BinaryHeap, HashMap};
 
 use super::{Card, Player, Turn};
-use mongodb::bson::oid::ObjectId;
 use strum_macros::Display;
 
 #[derive(Debug)]
 pub struct Game {
-    decks: HashMap<ObjectId, Player>,
-    players: Vec<ObjectId>,
+    decks: HashMap<String, Player>,
+    players: Vec<String>,
     hand_index: usize,
     current_player_index: usize,
     turn_cards: BinaryHeap<Turn>,
-    cards_mode: CardsMode,
+    dealing_mode: DealingMode,
     current_cards_count: usize,
 }
 
 const MAX_AVAILABLE_CARDS: usize = 40 - 1;
+const MAX_PLAYER_COUNT: usize = 10;
 
 impl Game {
-    pub fn new(players: Vec<ObjectId>) -> Result<Self, GameError> {
+    pub fn new(players: Vec<String>) -> Result<Self, GameError> {
         const INITIAL_HAND_INDEX: usize = 0;
 
         if players.len() < 2 {
             return Err(GameError::NotEnoughPlayers);
         }
 
-        if players.len() > 30 {
+        if players.len() > MAX_PLAYER_COUNT {
             return Err(GameError::TooManyPlayers);
         }
 
@@ -37,8 +37,8 @@ impl Game {
             turn_cards: BinaryHeap::new(),
             current_player_index: INITIAL_HAND_INDEX,
             hand_index: INITIAL_HAND_INDEX,
-            cards_mode: CardsMode::Increasing,
-            current_cards_count: 0,
+            dealing_mode: DealingMode::Increasing,
+            current_cards_count: 1,
         })
     }
 
@@ -60,7 +60,7 @@ impl Game {
         }
 
         if self.players.len() == 1 {
-            return Ok(GameState::Ended(self.players[0]));
+            return Ok(GameState::Ended(self.players[0].to_string()));
         }
 
         self.current_player_index += 1;
@@ -78,10 +78,10 @@ impl Game {
         Ok(GameState::Running)
     }
 
-    pub fn bid(&mut self, player: ObjectId, bid: usize) -> Result<(), BiddingError> {
+    pub fn bid(&mut self, player_id: &str, bid: usize) -> Result<(), BiddingError> {
         let player = self
             .decks
-            .get_mut(&player)
+            .get_mut(player_id)
             .ok_or(BiddingError::InvalidPlayer)?;
 
         if player.bid.is_some() {
@@ -93,12 +93,12 @@ impl Game {
         Ok(())
     }
 
-    fn get_current_player_id(&mut self) -> ObjectId {
+    fn get_current_player_id(&mut self) -> String {
         if self.current_player_index == self.players.len() {
             self.current_player_index = 0;
         }
 
-        self.players[self.current_player_index]
+        self.players[self.current_player_index].to_string()
     }
 
     fn start_new_round(&mut self) {
@@ -111,42 +111,49 @@ impl Game {
         self.current_player_index = self.hand_index;
 
         let (mode, count) =
-            Self::get_new_cards_mode(self.cards_mode, self.hand_index, self.players.len());
+            Self::get_new_cards_mode(self.dealing_mode, self.hand_index, self.players.len());
 
-        self.cards_mode = mode;
+        self.dealing_mode = mode;
 
         self.decks = Self::get_decks(&self.players, count);
     }
 
     fn get_new_cards_mode(
-        mode: CardsMode,
+        mode: DealingMode,
         count: usize,
         player_count: usize,
-    ) -> (CardsMode, usize) {
+    ) -> (DealingMode, usize) {
         match mode {
-            CardsMode::Increasing => {
+            DealingMode::Increasing => {
                 if count + 1 < MAX_AVAILABLE_CARDS / player_count {
-                    (CardsMode::Increasing, count + 1)
+                    (DealingMode::Increasing, count + 1)
                 } else {
-                    (CardsMode::Decreasing, count - 1)
+                    (DealingMode::Decreasing, count - 1)
                 }
             }
-            CardsMode::Decreasing => {
+            DealingMode::Decreasing => {
                 if count - 1 == 0 {
-                    (CardsMode::Increasing, count + 1)
+                    (DealingMode::Increasing, count + 1)
                 } else {
-                    (CardsMode::Decreasing, count - 1)
+                    (DealingMode::Decreasing, count - 1)
                 }
             }
         }
     }
 
-    fn get_decks(players: &[ObjectId], cards: usize) -> HashMap<ObjectId, Player> {
+    fn get_decks(players: &[String], cards: usize) -> HashMap<String, Player> {
         let mut deck = Card::shuffled_deck();
 
+        // TODO try to return a slice
+
         players
-            .iter()
-            .map(|p| (*p, Player::new(*p, deck.drain(..cards).collect())))
+            .into_iter()
+            .map(|p| {
+                (
+                    p.to_string(),
+                    Player::new(p.to_string(), deck.drain(..cards).collect()),
+                )
+            })
             .collect()
     }
 
@@ -180,19 +187,25 @@ impl Game {
 #[derive(Debug, serde::Serialize)]
 pub enum GameState {
     Running,
-    Ended(ObjectId),
+    Ended(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum CardsMode {
+enum DealingMode {
     Increasing,
     Decreasing,
 }
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum GameError {
+    #[error("Not enough players")]
     NotEnoughPlayers,
+    #[error("Too many players")]
     TooManyPlayers,
+    #[error("Invalid turn")]
+    InvalidTurn(#[from] TurnError),
+    #[error("Invalid bid")]
+    InvalidBid(#[from] BiddingError),
 }
 
 #[derive(Debug, thiserror::Error, Display)]
@@ -214,10 +227,10 @@ mod tests {
 
     #[test]
     fn test_game() {
-        let player1 = ObjectId::new();
-        let player2 = ObjectId::new();
+        let player1 = "P1".to_string();
+        let player2 = "P2".to_string();
 
-        let mut game = Game::new(vec![player1, player2]).unwrap();
+        let mut game = Game::new(vec![player1.clone(), player2.clone()]).unwrap();
 
         assert!(game.turn_cards.is_empty());
         assert!(game.current_player_index == 0);
@@ -225,12 +238,12 @@ mod tests {
 
         let first_played_card = game.decks[&player1].deck[0];
         let first_turn = Turn {
-            player_id: player1,
+            player_id: player1.clone(),
             card: first_played_card,
         };
 
-        game.bid(player1, 1).unwrap();
-        game.bid(player2, 2).unwrap();
+        game.bid(&player1, 1).unwrap();
+        game.bid(&player2, 2).unwrap();
 
         game.advance(first_turn).unwrap();
 
@@ -240,7 +253,7 @@ mod tests {
 
         let second_played_card = game.decks[&player2].deck[0];
         let second_turn = Turn {
-            player_id: player2,
+            player_id: player2.clone(),
             card: second_played_card,
         };
 
@@ -255,23 +268,23 @@ mod tests {
     #[test]
     fn test_card_mode() {
         assert_eq!(
-            Game::get_new_cards_mode(CardsMode::Increasing, 1, 4),
-            (CardsMode::Increasing, 2)
+            Game::get_new_cards_mode(DealingMode::Increasing, 1, 4),
+            (DealingMode::Increasing, 2)
         );
 
         assert_eq!(
-            Game::get_new_cards_mode(CardsMode::Decreasing, 1, 4),
-            (CardsMode::Increasing, 2)
+            Game::get_new_cards_mode(DealingMode::Decreasing, 1, 4),
+            (DealingMode::Increasing, 2)
         );
 
         assert_eq!(
-            Game::get_new_cards_mode(CardsMode::Increasing, 2, 4),
-            (CardsMode::Increasing, 3)
+            Game::get_new_cards_mode(DealingMode::Increasing, 2, 4),
+            (DealingMode::Increasing, 3)
         );
 
         assert_eq!(
-            Game::get_new_cards_mode(CardsMode::Increasing, 7, 5),
-            (CardsMode::Decreasing, 6)
+            Game::get_new_cards_mode(DealingMode::Increasing, 7, 5),
+            (DealingMode::Decreasing, 6)
         );
     }
 }
