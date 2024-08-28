@@ -81,7 +81,7 @@ fn get_session_token(_req: &mut Request) -> Option<String> {
 fn get_session_claims(_token: &str) -> Result<UserClaims, AuthError> {
     let claims = AnonymousUserClaims {
         id: ObjectId::new(),
-        photo_index: 0,
+        picture_index: 0,
         name: "João Xavier".to_string(),
     };
 
@@ -158,7 +158,7 @@ impl UserClaims {
 #[derive(serde::Serialize, Clone)]
 pub struct AnonymousUserClaims {
     id: ObjectId,
-    photo_index: usize,
+    picture_index: usize,
     name: String,
 }
 
