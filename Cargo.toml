@@ -5,7 +5,6 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-
 [dependencies]
 axum = { version = "0.7.5", features = ["ws"] }
 tokio = { version = "1.38.0", features = ["rt-multi-thread"] }
@@ -22,3 +21,8 @@ dotenv = "0.15"
 strum = "0.26.3"
 strum_macros = "0.26.4"
 rand = "0.8.5"
+reqwest = { version = "0.12.7", features = [
+  "json",
+  "rustls-tls",
+], default-features = false }
+jsonwebtoken = "9.3.0"
