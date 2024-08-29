@@ -58,13 +58,22 @@ struct LoginParams {
     nickname: String,
     picture_index: usize,
 }
+#[derive(serde::Serialize, serde::Deserialize)]
+struct AnonymousUserClaimsDto {
+    id: ObjectId,
+    picture_index: usize,
+    name: String,
+    iss: String,
+    exp: usize,
+}
 
 async fn login(Json(params): Json<LoginParams>) -> Json<Value> {
-    let claims = AnonymousUserClaims {
+    let claims = AnonymousUserClaimsDto {
         id: ObjectId::new(),
         picture_index: params.picture_index,
         name: params.nickname,
         iss: "https://fodinha.click".to_string(),
+        exp: 10000000000,
     };
 
     let token = jsonwebtoken::encode(
@@ -101,9 +110,15 @@ fn get_anonymous_claims(token: &str) -> Result<UserClaims, AuthError> {
 
     validation.validate_exp = false;
 
-    let token = jsonwebtoken::decode(token, &key, &validation)?;
+    let claims: AnonymousUserClaimsDto = jsonwebtoken::decode(token, &key, &validation)?.claims;
 
-    Ok(UserClaims::Anonymous(token.claims))
+    let claims = AnonymousUserClaims {
+        id: claims.id,
+        picture_index: claims.picture_index,
+        name: claims.name,
+    };
+
+    Ok(UserClaims::Anonymous(claims))
 }
 
 async fn get_google_claims(token: &str) -> Result<UserClaims, AuthError> {
@@ -173,12 +188,11 @@ impl UserClaims {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, Clone)]
 pub struct AnonymousUserClaims {
     id: ObjectId,
     picture_index: usize,
     name: String,
-    iss: String,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
