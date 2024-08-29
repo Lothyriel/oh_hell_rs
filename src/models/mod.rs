@@ -2,32 +2,24 @@ mod game;
 
 use std::collections::HashMap;
 
-pub use game::{BiddingError, Game, GameError, GameState, TurnError};
+pub use game::Game;
 use mongodb::bson::oid::ObjectId;
 
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
 use rand::seq::SliceRandom;
-use strum_macros::EnumIter;
+use strum_macros::{Display, EnumIter};
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
 pub struct Turn {
     pub player_id: String,
     pub card: Card,
 }
 
-impl Eq for Turn {}
-
-impl PartialEq for Turn {
-    fn eq(&self, other: &Self) -> bool {
-        self.card == other.card
-    }
-}
-
 impl PartialOrd for Turn {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.card.partial_cmp(&other.card)
+        Some(self.cmp(other))
     }
 }
 
@@ -35,10 +27,6 @@ impl Ord for Turn {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.card.cmp(&other.card)
     }
-}
-
-struct GameManager {
-    games: HashMap<ObjectId, Game>,
 }
 
 #[derive(Debug)]
@@ -120,6 +108,43 @@ pub enum Suit {
     Swords,
     Cups,
     Clubs,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub enum GameState {
+    Running,
+    Ended(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum DealingMode {
+    Increasing,
+    Decreasing,
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum GameError {
+    #[error("Not enough players")]
+    NotEnoughPlayers,
+    #[error("Too many players")]
+    TooManyPlayers,
+    #[error("Invalid turn")]
+    InvalidTurn(#[from] TurnError),
+    #[error("Invalid bid")]
+    InvalidBid(#[from] BiddingError),
+}
+
+#[derive(Debug, thiserror::Error, Display)]
+pub enum TurnError {
+    PlayersNotBidded,
+    NotYourTurn,
+    NotYourCard,
+}
+
+#[derive(Debug, thiserror::Error, Display)]
+pub enum BiddingError {
+    InvalidPlayer,
+    AlreadyBidded,
 }
 
 #[cfg(test)]
