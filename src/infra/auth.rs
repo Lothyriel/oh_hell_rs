@@ -10,7 +10,7 @@ use axum::{
 use jsonwebtoken::{
     errors::Error,
     jwk::{Jwk, JwkSet},
-    DecodingKey, EncodingKey, Header, TokenData,
+    DecodingKey, EncodingKey, Header, TokenData, Validation,
 };
 use mongodb::bson::oid::ObjectId;
 use serde_json::{json, Value};
@@ -69,17 +69,21 @@ async fn login(Json(params): Json<LoginParams>) -> Json<Value> {
     let token = jsonwebtoken::encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(JWT_KEY.get().expect("JWT_KEY should be set").as_bytes()),
+        &EncodingKey::from_secret(get_key().as_bytes()),
     )
     .expect("Should encode JWT");
 
     Json(serde_json::json!({"token": token}))
 }
 
+fn get_key() -> &String {
+    JWT_KEY.get().expect("JWT_KEY should be set")
+}
+
 pub async fn get_claims_from_token(token: &str) -> Result<UserClaims, AuthError> {
     get_google_claims(token)
         .await
-        .or_else(|_| get_session_claims(token))
+        .or_else(|_| get_anonymous_claims(token))
 }
 
 async fn get_token_from_req(req: &mut Request) -> Option<&str> {
@@ -89,14 +93,11 @@ async fn get_token_from_req(req: &mut Request) -> Option<&str> {
         .and_then(|value| value.starts_with("Bearer ").then(|| &value[7..]))
 }
 
-fn get_session_claims(_token: &str) -> Result<UserClaims, AuthError> {
-    let claims = AnonymousUserClaims {
-        id: ObjectId::new(),
-        picture_index: 0,
-        name: "João Xavier".to_string(),
-    };
+fn get_anonymous_claims(token: &str) -> Result<UserClaims, AuthError> {
+    let key = DecodingKey::from_secret(get_key().as_bytes());
+    let token = jsonwebtoken::decode(token, &key, &Validation::default())?;
 
-    Ok(UserClaims::Anonymous(claims))
+    Ok(UserClaims::Anonymous(token.claims))
 }
 
 async fn get_google_claims(token: &str) -> Result<UserClaims, AuthError> {
@@ -166,7 +167,7 @@ impl UserClaims {
     }
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct AnonymousUserClaims {
     id: ObjectId,
     picture_index: usize,
