@@ -7,7 +7,10 @@ use axum::{
     },
     response::IntoResponse,
 };
-use futures::{stream::SplitStream, SinkExt, StreamExt};
+use futures::{
+    stream::{SplitSink, SplitStream},
+    SinkExt, StreamExt,
+};
 use mongodb::bson::oid::ObjectId;
 
 use crate::{
@@ -41,20 +44,18 @@ async fn handle_connection(
 
     let auth = get_auth(&mut receiver).await?;
 
-    ack_auth(&auth, &mut sender).await?;
+    ack_auth(auth.clone(), &mut sender).await?;
 
     manager.store_player_connection(auth.id(), sender).await?;
 
     tokio::spawn(async move {
         while let Some(Ok(message)) = receiver.next().await {
-            match handle_response(message, who, &manager, auth.clone()).await {
+            let id = auth.id();
+            match handle_response(message, who, &manager, &id).await {
                 Ok(_) => {}
                 Err(error) => {
                     tracing::error!("{error} | {who} closing connection");
-                    let msg = ServerMessage::Error(error.to_string());
-                    if let Err(error) = manager.send_message(auth, msg).await {
-                        tracing::error!("{error} | while trying to send error message")
-                    }
+                    manager.send_disconnect(&id, error).await;
                     break;
                 }
             }
@@ -67,15 +68,18 @@ async fn handle_connection(
 }
 
 async fn ack_auth(
-    auth: &UserClaims,
-    sender: &mut futures::stream::SplitSink<WebSocket, Message>,
+    claims: UserClaims,
+    sender: &mut SplitSink<WebSocket, Message>,
 ) -> Result<(), ManagerError> {
-    let welcome = ServerMessage::Authorized(auth.clone());
+    let welcome = ServerMessage::Authorized(claims);
+
     let welcome = serde_json::to_string(&welcome)?;
+
     sender
         .send(Message::Text(welcome))
         .await
         .map_err(|_| ManagerError::PlayerDisconnected)?;
+
     Ok(())
 }
 
@@ -83,11 +87,11 @@ async fn handle_response(
     message: Message,
     who: SocketAddr,
     manager: &Manager,
-    auth: UserClaims,
+    player_id: &str,
 ) -> Result<(), ManagerError> {
-    let response = process_message(message, who, manager.clone(), auth.clone()).await?;
+    let response = process_message(message, who, manager.clone(), player_id.to_string()).await?;
 
-    manager.send_message(auth, response).await
+    manager.send_message(player_id, response).await
 }
 
 async fn get_auth(receiver: &mut SplitStream<WebSocket>) -> Result<UserClaims, ManagerError> {
@@ -115,7 +119,7 @@ async fn process_message(
     msg: Message,
     who: SocketAddr,
     manager: Manager,
-    auth: UserClaims,
+    player_id: String,
 ) -> Result<ServerMessage, ManagerError> {
     match msg {
         Message::Text(message) => {
@@ -125,7 +129,7 @@ async fn process_message(
 
             let result = match message {
                 ClientMessage::Game(g) => {
-                    ServerMessage::Game(handle_game_message(g, manager, auth).await?)
+                    ServerMessage::Game(handle_game_message(g, manager, player_id).await?)
                 }
                 ClientMessage::Auth(a) => {
                     tracing::error!("Unexpected auth message {a}");
@@ -153,15 +157,14 @@ async fn process_message(
 async fn handle_game_message(
     message: ClientGameMessage,
     manager: Manager,
-    auth: UserClaims,
+    player_id: String,
 ) -> Result<ServerGameMessage, ManagerError> {
     let response = match message {
         ClientGameMessage::PlayTurn { card } => {
-            let (turn, state) = manager.play_turn(card, auth).await?;
+            let (turn, state) = manager.play_turn(card, player_id).await?;
             ServerGameMessage::PlayerTurn { turn, state }
         }
         ClientGameMessage::PutBid { bid } => {
-            let player_id = auth.id();
             manager.bid(bid, &player_id).await?;
             ServerGameMessage::PlayerBidded { player_id, bid }
         }

@@ -1,8 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
-use axum::extract::ws::{Message, WebSocket};
+use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures::{stream::SplitSink, SinkExt};
-use mongodb::bson::oid::ObjectId;
+use mongodb::{bson::oid::ObjectId, error};
 use tokio::sync::Mutex;
 
 use crate::{
@@ -73,11 +73,9 @@ impl Manager {
     pub async fn play_turn(
         &self,
         card: Card,
-        auth: UserClaims,
+        player_id: String,
     ) -> Result<(Turn, GameState), LobbyError> {
         let mut manager = self.inner.lobby.lock().await;
-
-        let player_id = auth.id();
 
         let game_id = {
             *manager
@@ -175,13 +173,13 @@ impl Manager {
 
     pub async fn send_message(
         &self,
-        auth: UserClaims,
+        player_id: &str,
         message: ServerMessage,
     ) -> Result<(), ManagerError> {
         let mut manager = self.inner.connections.lock().await;
 
         let connection = manager
-            .get_mut(&auth.id())
+            .get_mut(player_id)
             .ok_or(ManagerError::PlayerDisconnected)?;
 
         let message = serde_json::to_string(&message)?;
@@ -190,6 +188,29 @@ impl Manager {
             .send(Message::Text(message))
             .await
             .map_err(|_| ManagerError::PlayerDisconnected)
+    }
+
+    pub async fn send_disconnect(&self, player_id: &str, reason: ManagerError) {
+        let mut manager = self.inner.connections.lock().await;
+
+        let connection = match manager.get_mut(player_id) {
+            Some(c) => c,
+            None => {
+                tracing::error!("{player_id} disconnected");
+                return;
+            }
+        };
+
+        let send_close = connection
+            .send(Message::Close(Some(CloseFrame {
+                code: 1,
+                reason: Cow::Owned(reason.to_string()),
+            })))
+            .await;
+
+        if let Err(e) = send_close {
+            tracing::error!("{e} | while trying to send error message")
+        }
     }
 }
 
