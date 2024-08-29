@@ -35,7 +35,7 @@ pub async fn middleware(
         .await
         .ok_or(AuthError::TokenNotPresent)?;
 
-    let claims = get_claims_from_token(&token).await?;
+    let claims = get_claims_from_token(token).await?;
 
     req.extensions_mut().insert(claims.clone());
 
@@ -61,17 +61,11 @@ pub async fn get_claims_from_token(token: &str) -> Result<UserClaims, AuthError>
         .or_else(|_| get_session_claims(token))
 }
 
-async fn get_token_from_req(req: &mut Request) -> Option<String> {
+async fn get_token_from_req(req: &mut Request) -> Option<&str> {
     req.headers()
         .get(header::AUTHORIZATION)
         .and_then(|header| header.to_str().ok())
         .and_then(|value| value.starts_with("Bearer ").then(|| &value[7..]))
-        .map(|t| t.to_string())
-        .or(get_session_token(req))
-}
-
-fn get_session_token(_req: &mut Request) -> Option<String> {
-    todo!()
 }
 
 fn get_session_claims(_token: &str) -> Result<UserClaims, AuthError> {
