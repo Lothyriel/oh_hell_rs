@@ -21,17 +21,15 @@ pub fn router() -> Router<Manager> {
     Router::new().route("/login", routing::post(login))
 }
 
-pub async fn middleware(mut req: Request, next: Next) -> Result<impl IntoResponse, AuthError> {
+pub async fn middleware(
+    State(manager): State<Manager>,
+    mut req: Request,
+    next: Next,
+) -> Result<impl IntoResponse, AuthError> {
     let who = *req
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
         .expect("We should get the IP here");
-
-    let manager = req
-        .extensions()
-        .get::<State<Manager>>()
-        .expect("I wanna talk to the manager")
-        .clone();
 
     let token = get_token_from_req(&mut req)
         .await
@@ -64,14 +62,12 @@ pub async fn get_claims_from_token(token: &str) -> Result<UserClaims, AuthError>
 }
 
 async fn get_token_from_req(req: &mut Request) -> Option<String> {
-    let a = req
-        .headers()
+    req.headers()
         .get(header::AUTHORIZATION)
         .and_then(|header| header.to_str().ok())
         .and_then(|value| value.starts_with("Bearer ").then(|| &value[7..]))
-        .map(|t| t.to_string());
-
-    a.or(get_session_token(req))
+        .map(|t| t.to_string())
+        .or(get_session_token(req))
 }
 
 fn get_session_token(_req: &mut Request) -> Option<String> {
