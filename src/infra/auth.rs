@@ -95,7 +95,12 @@ async fn get_token_from_req(req: &mut Request) -> Option<&str> {
 
 fn get_anonymous_claims(token: &str) -> Result<UserClaims, AuthError> {
     let key = DecodingKey::from_secret(get_key().as_bytes());
-    let token = jsonwebtoken::decode(token, &key, &Validation::default())?;
+
+    let token = jsonwebtoken::decode(
+        token,
+        &key,
+        &Validation::new(jsonwebtoken::Algorithm::HS256),
+    )?;
 
     Ok(UserClaims::Anonymous(token.claims))
 }
