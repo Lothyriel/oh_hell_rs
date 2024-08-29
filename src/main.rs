@@ -5,6 +5,7 @@ mod services;
 use std::net::{Ipv4Addr, SocketAddr};
 
 use axum::{routing, Router};
+use infra::auth::JWT_KEY;
 use services::{
     manager::Manager,
     repositories::{auth::AuthRepository, game::GamesRepository, get_mongo_client},
@@ -24,6 +25,10 @@ async fn main() {
         .init();
 
     dotenv::dotenv().ok();
+
+    JWT_KEY
+        .set(std::env::var("JWT_KEY").expect("JWT_KEY var is missing"))
+        .expect("Should set jwt key value");
 
     let db = get_mongo_client()
         .await

@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::OnceLock};
 
 use axum::{
     extract::{ConnectInfo, Request, State},
@@ -10,16 +10,18 @@ use axum::{
 use jsonwebtoken::{
     errors::Error,
     jwk::{Jwk, JwkSet},
-    DecodingKey, TokenData,
+    DecodingKey, EncodingKey, Header, TokenData,
 };
 use mongodb::bson::oid::ObjectId;
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::services::{manager::Manager, repositories::auth::LoginDto};
 
 pub fn router() -> Router<Manager> {
     Router::new().route("/login", routing::post(login))
 }
+
+pub static JWT_KEY: OnceLock<String> = OnceLock::new();
 
 pub async fn middleware(
     State(manager): State<Manager>,
@@ -51,8 +53,27 @@ pub async fn middleware(
     Ok(next.run(req).await)
 }
 
-async fn login() {
-    todo!()
+#[derive(serde::Deserialize)]
+struct LoginParams {
+    nickname: String,
+    picture_index: usize,
+}
+
+async fn login(Json(params): Json<LoginParams>) -> Json<Value> {
+    let claims = AnonymousUserClaims {
+        id: ObjectId::new(),
+        picture_index: params.picture_index,
+        name: params.nickname,
+    };
+
+    let token = jsonwebtoken::encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(JWT_KEY.get().expect("JWT_KEY should be set").as_bytes()),
+    )
+    .expect("Should encode JWT");
+
+    Json(serde_json::json!({"token": token}))
 }
 
 pub async fn get_claims_from_token(token: &str) -> Result<UserClaims, AuthError> {
