@@ -197,9 +197,20 @@ impl Manager {
             }
         };
 
+        let code = match reason {
+            ManagerError::PlayerDisconnected => 1001,
+            ManagerError::InvalidWebsocketMessageType => 1003,
+            ManagerError::Lobby(_) => 1008,
+            ManagerError::Turn(_) | ManagerError::Bid(_) => 1008,
+            ManagerError::UnexpectedJsonMessage(_) => 1008,
+            ManagerError::UnexpectedValidMessage(_) => 1008,
+            ManagerError::Database(_) => 1011,
+            ManagerError::Unauthorized(_) => 3000,
+        };
+
         let send_close = connection
             .send(Message::Close(Some(CloseFrame {
-                code: 1,
+                code,
                 reason: Cow::Owned(reason.to_string()),
             })))
             .await;
