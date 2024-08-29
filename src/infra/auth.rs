@@ -64,6 +64,7 @@ async fn login(Json(params): Json<LoginParams>) -> Json<Value> {
         id: ObjectId::new(),
         picture_index: params.picture_index,
         name: params.nickname,
+        iss: "https://fodinha.click".to_string(),
     };
 
     let token = jsonwebtoken::encode(
@@ -96,11 +97,11 @@ async fn get_token_from_req(req: &mut Request) -> Option<&str> {
 fn get_anonymous_claims(token: &str) -> Result<UserClaims, AuthError> {
     let key = DecodingKey::from_secret(get_key().as_bytes());
 
-    let token = jsonwebtoken::decode(
-        token,
-        &key,
-        &Validation::new(jsonwebtoken::Algorithm::HS256),
-    )?;
+    let mut validation = Validation::new(jsonwebtoken::Algorithm::HS256);
+
+    validation.validate_exp = false;
+
+    let token = jsonwebtoken::decode(token, &key, &validation)?;
 
     Ok(UserClaims::Anonymous(token.claims))
 }
@@ -177,6 +178,7 @@ pub struct AnonymousUserClaims {
     id: ObjectId,
     picture_index: usize,
     name: String,
+    iss: String,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
