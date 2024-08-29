@@ -42,7 +42,7 @@ async fn main() {
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::list(vec![
             "https://fodinha.click".parse().expect("Valid url"),
-            "localhost".parse().expect("Valid url"),
+            "http://localhost".parse().expect("Valid url"),
         ]))
         .allow_methods(Any)
         .allow_headers(Any);
