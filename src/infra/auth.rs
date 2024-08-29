@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use axum::{
-    extract::Request,
+    extract::{ConnectInfo, Request, State},
     http::{header, StatusCode},
     middleware::Next,
     response::IntoResponse,
@@ -24,12 +24,12 @@ pub fn router() -> Router<Manager> {
 pub async fn middleware(mut req: Request, next: Next) -> Result<impl IntoResponse, AuthError> {
     let who = *req
         .extensions()
-        .get::<SocketAddr>()
+        .get::<ConnectInfo<SocketAddr>>()
         .expect("We should get the IP here");
 
     let manager = req
         .extensions()
-        .get::<Manager>()
+        .get::<State<Manager>>()
         .expect("I wanna talk to the manager")
         .clone();
 

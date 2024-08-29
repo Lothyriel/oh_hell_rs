@@ -32,7 +32,7 @@ async fn main() {
 
     let manager = Manager::new(GamesRepository::new(&db), AuthRepository::new(&db));
 
-    let auth_layer = axum::middleware::from_fn(infra::auth::middleware);
+    let auth_layer = axum::middleware::from_fn_with_state(manager.clone(), infra::auth::middleware);
 
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::list(vec![
@@ -45,11 +45,11 @@ async fn main() {
     let app = Router::new()
         .route("/game", routing::get(infra::game::ws_handler))
         .nest("/lobby", infra::lobby::router().layer(auth_layer))
-        .layer(tower_http::trace::TraceLayer::new_for_http())
         .nest("/auth", infra::auth::router())
         .fallback(infra::fallback_handler)
-        .layer(cors)
-        .with_state(manager);
+        .with_state(manager)
+        .layer(tower_http::trace::TraceLayer::new_for_http())
+        .layer(cors);
 
     let address = (Ipv4Addr::UNSPECIFIED, 3000);
 
