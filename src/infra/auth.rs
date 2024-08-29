@@ -76,7 +76,7 @@ async fn login(Json(params): Json<LoginParams>) -> Json<Value> {
     Json(serde_json::json!({"token": token}))
 }
 
-fn get_key() -> &String {
+fn get_key() -> &'static str {
     JWT_KEY.get().expect("JWT_KEY should be set")
 }
 
