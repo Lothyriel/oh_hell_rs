@@ -91,9 +91,10 @@ fn get_key() -> &'static str {
 }
 
 pub async fn get_claims_from_token(token: &str) -> Result<UserClaims, AuthError> {
-    get_google_claims(token)
-        .await
-        .or_else(|_| get_anonymous_claims(token))
+    match get_anonymous_claims(token) {
+        Ok(c) => Ok(c),
+        Err(_) => get_google_claims(token).await,
+    }
 }
 
 async fn get_token_from_req(req: &mut Request) -> Option<&str> {
