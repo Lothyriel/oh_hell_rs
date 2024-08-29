@@ -11,14 +11,16 @@ use futures::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
 };
-use mongodb::bson::oid::ObjectId;
 
 use crate::{
-    models::{Card, GameState, Turn},
+    infra::ClientMessage,
     services::manager::{Manager, ManagerError},
 };
 
-use super::auth::{self, UserClaims};
+use super::{
+    auth::{self, UserClaims},
+    ClientGameMessage, ServerGameMessage, ServerMessage,
+};
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
@@ -125,7 +127,7 @@ async fn process_message(
         Message::Text(message) => {
             tracing::debug!(">>>> {who} sent text message: {message:?}");
 
-            let message: ClientMessage = serde_json::from_str(&message)?;
+            let message = serde_json::from_str(&message)?;
 
             let result = match message {
                 ClientMessage::Game(g) => {
@@ -171,45 +173,4 @@ async fn handle_game_message(
     };
 
     Ok(response)
-}
-
-#[derive(serde::Deserialize)]
-#[serde(tag = "type", content = "data")]
-pub enum ClientMessage {
-    Game(ClientGameMessage),
-    Auth(String),
-}
-
-#[derive(serde::Deserialize)]
-#[serde(tag = "type", content = "data")]
-pub enum ClientGameMessage {
-    PlayTurn { card: Card },
-    PutBid { bid: usize },
-}
-
-#[derive(serde::Serialize)]
-pub struct GetLobbyDto {
-    pub id: ObjectId,
-    pub player_count: usize,
-}
-
-#[derive(serde::Serialize)]
-pub struct JoinLobbyDto {
-    pub id: ObjectId,
-    pub players: Vec<UserClaims>,
-}
-
-#[derive(serde::Serialize)]
-#[serde(tag = "type", content = "data")]
-pub enum ServerGameMessage {
-    PlayerTurn { turn: Turn, state: GameState },
-    PlayerBidded { player_id: String, bid: usize },
-}
-
-#[derive(serde::Serialize)]
-#[serde(tag = "type", content = "data")]
-pub enum ServerMessage {
-    Authorized(UserClaims),
-    Game(ServerGameMessage),
-    Error(String),
 }

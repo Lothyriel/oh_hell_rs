@@ -2,15 +2,11 @@ use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures::{stream::SplitSink, SinkExt};
-use mongodb::{bson::oid::ObjectId, error};
+use mongodb::bson::oid::ObjectId;
 use tokio::sync::Mutex;
 
 use crate::{
-    infra::{
-        self,
-        auth::UserClaims,
-        game::{GetLobbyDto, ServerMessage},
-    },
+    infra::{self, auth::UserClaims, GetLobbyDto, ServerMessage},
     models::{BiddingError, Card, Game, GameError, GameState, Turn, TurnError},
 };
 

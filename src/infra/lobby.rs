@@ -12,10 +12,7 @@ use crate::{
     services::manager::{LobbyError, Manager},
 };
 
-use super::{
-    auth::UserClaims,
-    game::{GetLobbyDto, JoinLobbyDto},
-};
+use super::{auth::UserClaims, GetLobbyDto, JoinLobbyDto};
 
 pub fn router() -> Router<Manager> {
     Router::new()

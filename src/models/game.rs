@@ -1,7 +1,8 @@
 use std::collections::{BinaryHeap, HashMap};
 
-use super::{Card, Player, Turn};
-use strum_macros::Display;
+use crate::models::GameError;
+
+use super::{BiddingError, Card, DealingMode, GameState, Player, Turn, TurnError};
 
 #[derive(Debug)]
 pub struct Game {
@@ -182,43 +183,6 @@ impl Game {
 
         self.decks.retain(|_, p| p.lifes != 0)
     }
-}
-
-#[derive(Debug, serde::Serialize)]
-pub enum GameState {
-    Running,
-    Ended(String),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum DealingMode {
-    Increasing,
-    Decreasing,
-}
-
-#[derive(thiserror::Error, Debug)]
-pub enum GameError {
-    #[error("Not enough players")]
-    NotEnoughPlayers,
-    #[error("Too many players")]
-    TooManyPlayers,
-    #[error("Invalid turn")]
-    InvalidTurn(#[from] TurnError),
-    #[error("Invalid bid")]
-    InvalidBid(#[from] BiddingError),
-}
-
-#[derive(Debug, thiserror::Error, Display)]
-pub enum TurnError {
-    PlayersNotBidded,
-    NotYourTurn,
-    NotYourCard,
-}
-
-#[derive(Debug, thiserror::Error, Display)]
-pub enum BiddingError {
-    InvalidPlayer,
-    AlreadyBidded,
 }
 
 #[cfg(test)]
