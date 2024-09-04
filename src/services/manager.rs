@@ -38,6 +38,7 @@ impl Manager {
 
         let id = ObjectId::new();
 
+        manager.players_lobby.insert(user.id(), id);
         manager.lobbies.insert(id, Lobby::new(user));
 
         id
