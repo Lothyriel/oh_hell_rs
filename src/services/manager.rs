@@ -1,4 +1,8 @@
-use std::{borrow::Cow, collections::HashMap, sync::Arc};
+use std::{
+    borrow::{BorrowMut, Cow},
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures::{stream::SplitSink, SinkExt};
@@ -67,11 +71,7 @@ impl Manager {
         Ok(players)
     }
 
-    pub async fn play_turn(
-        &self,
-        card: Card,
-        player_id: String,
-    ) -> Result<(Turn, GameState), LobbyError> {
+    pub async fn play_turn(&self, card: Card, player_id: String) -> Result<Turn, LobbyError> {
         let mut manager = self.inner.lobby.lock().await;
 
         let game_id = {
@@ -98,7 +98,7 @@ impl Manager {
             .advance(turn.clone())
             .map_err(|e| LobbyError::GameError(GameError::InvalidTurn(e)))?;
 
-        Ok((turn, state))
+        Ok(turn)
     }
 
     pub async fn bid(&self, bid: usize, player_id: &str) -> Result<(), LobbyError> {
@@ -135,25 +135,6 @@ impl Manager {
                 player_count: lobby.players.len(),
             })
             .collect()
-    }
-
-    pub async fn start_game(&self, game_id: ObjectId) -> Result<(), LobbyError> {
-        let mut manager = self.inner.lobby.lock().await;
-
-        let lobby = manager
-            .lobbies
-            .get_mut(&game_id)
-            .ok_or(LobbyError::InvalidLobby)?;
-
-        if lobby.game.is_some() {
-            return Err(LobbyError::GameAlreadyStarted);
-        }
-
-        let game = Game::new(lobby.get_players_id())?;
-
-        lobby.game = Some(game);
-
-        Ok(())
     }
 
     pub async fn store_player_connection(
@@ -220,6 +201,40 @@ impl Manager {
             tracing::error!("{e} | while trying to send error message")
         }
     }
+
+    pub async fn player_ready(&self, player_id: String) -> Result<bool, LobbyError> {
+        let mut manager = self.inner.lobby.lock().await;
+
+        let lobby_id = {
+            *manager
+                .players_lobby
+                .get(&player_id)
+                .ok_or(LobbyError::WrongLobby)?
+        };
+
+        let lobby = manager
+            .lobbies
+            .get_mut(&lobby_id)
+            .ok_or(LobbyError::InvalidLobby)?;
+
+        let players_ready = match lobby.game.borrow_mut() {
+            GameState::NotStarted(p) => p,
+            GameState::Running(_) => return Err(LobbyError::GameAlreadyStarted),
+            GameState::Ended { winner: _, game: _ } => return Err(LobbyError::GameNotStarted),
+        };
+
+        players_ready.insert(player_id);
+
+        if players_ready.len() != lobby.players.len() {
+            return Ok(false);
+        };
+
+        let game = Game::new(lobby.get_players_id())?;
+
+        lobby.game = GameState::Running(game);
+
+        Ok(true)
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -273,14 +288,14 @@ struct LobbiesManager {
 
 struct Lobby {
     players: HashMap<String, UserClaims>,
-    game: Option<Game>,
+    game: GameState,
 }
 
 impl Lobby {
     fn new(owner: UserClaims) -> Self {
         Self {
             players: vec![(owner.id(), owner)].into_iter().collect(),
-            game: None,
+            game: GameState::NotStarted(HashSet::new()),
         }
     }
 
@@ -293,7 +308,11 @@ impl Lobby {
     }
 
     fn get_game(&mut self) -> Result<&mut Game, LobbyError> {
-        self.game.as_mut().ok_or(LobbyError::GameNotStarted)
+        match self.game.borrow_mut() {
+            GameState::NotStarted(_) => Err(LobbyError::GameNotStarted),
+            GameState::Running(g) => Ok(g),
+            GameState::Ended { winner: _, game } => Ok(game),
+        }
     }
 }
 

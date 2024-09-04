@@ -163,12 +163,16 @@ async fn handle_game_message(
 ) -> Result<ServerGameMessage, ManagerError> {
     let response = match message {
         ClientGameMessage::PlayTurn { card } => {
-            let (turn, state) = manager.play_turn(card, player_id).await?;
-            ServerGameMessage::PlayerTurn { turn, state }
+            let turn = manager.play_turn(card, player_id).await?;
+            ServerGameMessage::TurnPlayed { turn }
         }
         ClientGameMessage::PutBid { bid } => {
             manager.bid(bid, &player_id).await?;
             ServerGameMessage::PlayerBidded { player_id, bid }
+        }
+        ClientGameMessage::Ready => {
+            manager.player_ready(player_id.clone()).await?;
+            ServerGameMessage::PlayerReady { player_id }
         }
     };
 
