@@ -1,6 +1,6 @@
 mod game;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub use game::Game;
 use mongodb::bson::oid::ObjectId;
@@ -11,7 +11,7 @@ use strum::IntoEnumIterator;
 use rand::seq::SliceRandom;
 use strum_macros::{Display, EnumIter};
 
-#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct Turn {
     pub player_id: String,
     pub card: Card,
@@ -110,10 +110,17 @@ pub enum Suit {
     Clubs,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug)]
 pub enum GameState {
-    Running,
-    Ended(String),
+    NotStarted(HashSet<String>),
+    Running(Game),
+    Ended { winner: String, game: Game },
+}
+
+pub enum GameEvent {
+    RoundEnded,
+    GameEnded(String),
+    TurnPlayed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

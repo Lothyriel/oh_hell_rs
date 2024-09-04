@@ -2,7 +2,7 @@ use std::collections::{BinaryHeap, HashMap};
 
 use crate::models::GameError;
 
-use super::{BiddingError, Card, DealingMode, GameState, Player, Turn, TurnError};
+use super::{BiddingError, Card, DealingMode, GameEvent, GameState, Player, Turn, TurnError};
 
 #[derive(Debug)]
 pub struct Game {
@@ -43,7 +43,7 @@ impl Game {
         })
     }
 
-    pub fn advance(&mut self, turn: Turn) -> Result<GameState, TurnError> {
+    pub fn advance(&mut self, turn: Turn) -> Result<GameEvent, TurnError> {
         let current_player_id = self.get_current_player_id();
 
         if current_player_id != turn.player_id {
@@ -61,7 +61,7 @@ impl Game {
         }
 
         if self.players.len() == 1 {
-            return Ok(GameState::Ended(self.players[0].to_string()));
+            return Ok(GameEvent::GameEnded(self.players[0].to_string()));
         }
 
         self.current_player_index += 1;
@@ -73,10 +73,9 @@ impl Game {
             self.start_new_round();
             // todo needs to adjust the self.current_player_index and hand_index when a player is
             //removed
-            return Ok(GameState::Running);
         }
 
-        Ok(GameState::Running)
+        Ok(GameEvent::TurnPlayed)
     }
 
     pub fn bid(&mut self, player_id: &str, bid: usize) -> Result<(), BiddingError> {
