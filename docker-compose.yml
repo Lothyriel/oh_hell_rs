@@ -11,3 +11,5 @@ services:
     build: https://github.com/Lothyriel/oh_hell_rs.git
     environment:
       JWT_KEY: "JWT_KEY-oh_hell_rs"
+    ports:
+      - 3000:3000
