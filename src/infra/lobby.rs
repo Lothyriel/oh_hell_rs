@@ -5,7 +5,6 @@ use axum::{
 };
 use mongodb::bson::oid::ObjectId;
 use reqwest::StatusCode;
-use serde_json::Value;
 
 use crate::{
     models::GameError,
@@ -38,10 +37,15 @@ async fn join_lobby(
 async fn create_lobby(
     State(manager): State<Manager>,
     Extension(user_claims): Extension<UserClaims>,
-) -> Json<Value> {
-    let id = manager.create_lobby(user_claims).await;
+) -> Json<CreateLobbyResponse> {
+    let lobby_id = manager.create_lobby(user_claims).await;
 
-    Json(serde_json::json!({"lobby_id": id}))
+    Json(CreateLobbyResponse { lobby_id })
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct CreateLobbyResponse {
+    pub lobby_id: ObjectId,
 }
 
 impl IntoResponse for LobbyError {

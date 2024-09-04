@@ -13,7 +13,7 @@ use jsonwebtoken::{
     DecodingKey, EncodingKey, Header, TokenData, Validation,
 };
 use mongodb::bson::oid::ObjectId;
-use serde_json::{json, Value};
+use serde_json::json;
 
 use crate::services::{manager::Manager, repositories::auth::LoginDto};
 
@@ -53,10 +53,10 @@ pub async fn middleware(
     Ok(next.run(req).await)
 }
 
-#[derive(serde::Deserialize)]
-struct LoginParams {
-    nickname: String,
-    picture_index: usize,
+#[derive(serde::Deserialize, serde::Serialize)]
+pub struct LoginParams {
+    pub nickname: String,
+    pub picture_index: usize,
 }
 #[derive(serde::Serialize, serde::Deserialize)]
 struct AnonymousUserClaimsDto {
@@ -67,7 +67,7 @@ struct AnonymousUserClaimsDto {
     exp: usize,
 }
 
-async fn login(Json(params): Json<LoginParams>) -> Json<Value> {
+async fn login(Json(params): Json<LoginParams>) -> Json<TokenResponse> {
     let claims = AnonymousUserClaimsDto {
         id: ObjectId::new(),
         picture_index: params.picture_index,
@@ -83,7 +83,12 @@ async fn login(Json(params): Json<LoginParams>) -> Json<Value> {
     )
     .expect("Should encode JWT");
 
-    Json(serde_json::json!({"token": token}))
+    Json(TokenResponse { token })
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct TokenResponse {
+    pub token: String,
 }
 
 fn get_key() -> &'static str {
@@ -173,7 +178,7 @@ impl IntoResponse for AuthError {
     }
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum UserClaims {
     Anonymous(AnonymousUserClaims),
@@ -189,7 +194,7 @@ impl UserClaims {
     }
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct AnonymousUserClaims {
     id: ObjectId,
     picture_index: usize,
