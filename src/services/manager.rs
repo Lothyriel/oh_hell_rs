@@ -40,19 +40,18 @@ impl Manager {
     pub async fn create_lobby(&self, user: UserClaims) -> ObjectId {
         let mut manager = self.inner.lobby.lock().await;
 
-        let id = ObjectId::new();
+        let lobby_id = ObjectId::new();
 
-        manager.players_lobby.insert(user.id(), id);
-        manager.lobbies.insert(id, Lobby::new(user));
+        manager.lobbies.insert(lobby_id, Lobby::new(user));
 
-        id
+        lobby_id
     }
 
     pub async fn join_lobby(
         &self,
         lobby_id: ObjectId,
         user_claims: UserClaims,
-    ) -> Result<Vec<UserClaims>, LobbyError> {
+    ) -> Result<Vec<PlayerStatus>, LobbyError> {
         let mut manager = self.inner.lobby.lock().await;
 
         let players = {
@@ -61,7 +60,9 @@ impl Manager {
                 .get_mut(&lobby_id)
                 .ok_or(LobbyError::InvalidLobby)?;
 
-            lobby.players.insert(user_claims.id(), user_claims.clone());
+            let status = PlayerStatus::new(user_claims.clone());
+
+            lobby.players.insert(user_claims.id(), status);
 
             lobby.get_players()
         };
@@ -287,14 +288,28 @@ struct LobbiesManager {
 }
 
 struct Lobby {
-    players: HashMap<String, UserClaims>,
+    players: HashMap<String, PlayerStatus>,
     game: GameState,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct PlayerStatus {
+    pub ready: bool,
+    pub player: UserClaims,
+}
+impl PlayerStatus {
+    fn new(claims: UserClaims) -> Self {
+        Self {
+            ready: false,
+            player: claims,
+        }
+    }
 }
 
 impl Lobby {
     fn new(owner: UserClaims) -> Self {
         Self {
-            players: vec![(owner.id(), owner)].into_iter().collect(),
+            players: HashMap::new(),
             game: GameState::NotStarted(HashSet::new()),
         }
     }
@@ -303,7 +318,7 @@ impl Lobby {
         self.players.keys().cloned().collect()
     }
 
-    fn get_players(&self) -> Vec<UserClaims> {
+    fn get_players(&self) -> Vec<PlayerStatus> {
         self.players.values().cloned().collect()
     }
 

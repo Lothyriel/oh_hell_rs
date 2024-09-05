@@ -6,7 +6,10 @@ use auth::UserClaims;
 use axum::http::StatusCode;
 use mongodb::bson::oid::ObjectId;
 
-use crate::models::{Card, Turn};
+use crate::{
+    models::{Card, Turn},
+    services::manager::PlayerStatus,
+};
 
 pub async fn fallback_handler() -> (StatusCode, &'static str) {
     NOT_FOUND_RESPONSE
@@ -39,7 +42,7 @@ pub struct GetLobbyDto {
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct JoinLobbyDto {
     pub id: ObjectId,
-    pub players: Vec<UserClaims>,
+    pub players: Vec<PlayerStatus>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
