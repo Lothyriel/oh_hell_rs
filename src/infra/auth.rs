@@ -5,7 +5,7 @@ use axum::{
     http::{header, StatusCode},
     middleware::Next,
     response::IntoResponse,
-    routing, Json, Router,
+    routing, Extension, Json, Router,
 };
 use jsonwebtoken::{
     errors::Error,
@@ -18,7 +18,10 @@ use serde_json::json;
 use crate::services::{manager::Manager, repositories::auth::LoginDto};
 
 pub fn router() -> Router<Manager> {
-    Router::new().route("/login", routing::post(login))
+    Router::new().route("/login", routing::post(login)).route(
+        "/profile",
+        routing::post(update_profile).layer(axum::middleware::from_fn(middleware)),
+    )
 }
 
 pub static JWT_KEY: OnceLock<String> = OnceLock::new();
@@ -36,7 +39,7 @@ pub async fn middleware(mut req: Request, next: Next) -> Result<impl IntoRespons
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
-pub struct LoginParams {
+pub struct ProfileParams {
     pub nickname: String,
     pub picture: String,
 }
@@ -49,13 +52,42 @@ struct AnonymousUserClaimsDto {
     exp: usize,
 }
 
+async fn update_profile(
+    State(manager): State<Manager>,
+    ConnectInfo(who): ConnectInfo<SocketAddr>,
+    Extension(user_claims): Extension<UserClaims>,
+    Json(params): Json<ProfileParams>,
+) -> Result<Json<TokenResponse>, impl IntoResponse> {
+    let claim = match user_claims {
+        UserClaims::Anonymous(c) => c,
+        UserClaims::Google(_) => {
+            let response = (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "Google claim not supported for now...",
+            );
+            return Err(response.into_response());
+        }
+    };
+
+    Ok(generate_token(params, manager, who, claim.id).await)
+}
+
 async fn login(
     State(manager): State<Manager>,
     ConnectInfo(who): ConnectInfo<SocketAddr>,
-    Json(params): Json<LoginParams>,
+    Json(params): Json<ProfileParams>,
+) -> Json<TokenResponse> {
+    generate_token(params, manager, who, ObjectId::new()).await
+}
+
+async fn generate_token(
+    params: ProfileParams,
+    manager: Manager,
+    who: SocketAddr,
+    id: ObjectId,
 ) -> Json<TokenResponse> {
     let claims = AnonymousUserClaimsDto {
-        id: ObjectId::new(),
+        id,
         picture: params.picture,
         name: params.nickname,
         iss: "https://fodinha.click".to_string(),

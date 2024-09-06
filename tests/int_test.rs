@@ -6,7 +6,7 @@ mod tests {
     use mongodb::bson::oid::ObjectId;
     use oh_hell::{
         infra::{
-            auth::{LoginParams, TokenResponse},
+            auth::{ProfileParams, TokenResponse},
             lobby::CreateLobbyResponse,
             ClientGameMessage, ClientMessage, JoinLobbyDto, ServerMessage,
         },
@@ -149,7 +149,7 @@ mod tests {
     }
 
     async fn login(client: &mut Client) -> String {
-        let params = LoginParams {
+        let params = ProfileParams {
             picture: "picture.jpg".to_string(),
             nickname: "JX".to_string(),
         };
