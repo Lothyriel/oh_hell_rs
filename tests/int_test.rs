@@ -28,23 +28,22 @@ mod tests {
         let mut client = reqwest::Client::new();
 
         let p1_t = login(&mut client).await;
+        let p2_t = login(&mut client).await;
 
         let lobby_id = create_lobby(&mut client, &p1_t).await;
 
-        let p2_t = login(&mut client).await;
+        let lobby = join_lobby(&mut client, &p1_t, lobby_id).await;
+        assert!(lobby.players.len() == 1);
 
         let lobby = join_lobby(&mut client, &p2_t, lobby_id).await;
-
         assert!(lobby.players.len() == 2);
 
         let mut p1_s = connect_ws(p1_t).await;
-
         let mut p2_s = connect_ws(p2_t).await;
 
         let ready = ClientGameMessage::PlayerStatusChange { ready: true };
 
         send_msg(&mut p1_s, ready).await;
-
         send_msg(&mut p2_s, ready).await;
 
         let player_ready_predicate = |m: &ServerMessage| {
@@ -61,9 +60,9 @@ mod tests {
         assert_game_msg(&mut p2_s, player_ready_predicate).await;
 
         let p1_deck = get_deck(&mut p1_s).await;
-        let p2_deck = get_deck(&mut p2_s).await;
-
         assert!(p1_deck.len() == 1);
+
+        let p2_deck = get_deck(&mut p2_s).await;
         assert!(p2_deck.len() == 1);
 
         println!("{:?}", p1_deck);
