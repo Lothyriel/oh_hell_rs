@@ -2,13 +2,13 @@ const URL: &str = "http://localhost:3000/";
 
 #[cfg(test)]
 mod tests {
-    use futures::{SinkExt, StreamExt};
+    use futures::{stream::FusedStream, SinkExt, StreamExt};
     use mongodb::bson::oid::ObjectId;
     use oh_hell::{
         infra::{
             auth::{LoginParams, TokenResponse},
             lobby::CreateLobbyResponse,
-            ClientGameMessage, ClientMessage, JoinLobbyDto, ServerMessage, ServerMessage,
+            ClientGameMessage, ClientMessage, JoinLobbyDto, ServerMessage,
         },
         models::Card,
     };
@@ -41,12 +41,21 @@ mod tests {
 
         let mut p2_s = connect_ws(p2_t).await;
 
-        send_msg(&mut p1_s, ClientGameMessage::Ready).await;
+        let ready = ClientGameMessage::PlayerStatusChange { ready: true };
 
-        send_msg(&mut p2_s, ClientGameMessage::Ready).await;
+        send_msg(&mut p1_s, ready).await;
 
-        let player_ready_predicate =
-            |m: &ServerMessage| matches!(m, ServerMessage::PlayerReady { player_id: _ });
+        send_msg(&mut p2_s, ready).await;
+
+        let player_ready_predicate = |m: &ServerMessage| {
+            matches!(
+                m,
+                ServerMessage::PlayerStatusChange {
+                    player_id: _,
+                    ready: _
+                }
+            )
+        };
 
         assert_game_msg(&mut p1_s, player_ready_predicate).await;
         assert_game_msg(&mut p2_s, player_ready_predicate).await;
@@ -101,12 +110,7 @@ mod tests {
 
         stream.send(Message::Text(json)).await.unwrap();
 
-        let msg = recv_msg(&mut stream).await;
-
-        let _ = match msg {
-            ServerMessage::Authorized(a) => a,
-            _ => panic!("Unexpected message"),
-        };
+        assert!(!stream.is_terminated());
 
         stream
     }

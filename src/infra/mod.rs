@@ -4,7 +4,6 @@ pub mod lobby;
 
 use std::collections::HashMap;
 
-use auth::UserClaims;
 use axum::http::StatusCode;
 use mongodb::bson::oid::ObjectId;
 
@@ -27,12 +26,12 @@ pub enum ClientMessage {
     Auth(String),
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, Copy)]
 #[serde(tag = "type", content = "data")]
 pub enum ClientGameMessage {
     PlayTurn { card: Card },
     PutBid { bid: usize },
-    Ready,
+    PlayerStatusChange { ready: bool },
 }
 
 #[derive(serde::Serialize)]
@@ -51,22 +50,15 @@ type PlayerPoints = HashMap<String, usize>;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", content = "data")]
-pub enum ServerGameMessage {
+pub enum ServerMessage {
     PlayerTurn { player_id: String },
     TurnPlayed { turn: Turn },
     PlayerBidded { player_id: String, bid: usize },
     PlayerBiddingTurn { player_id: String },
-    PlayerReady { player_id: String },
+    PlayerStatusChange { player_id: String, ready: bool },
     RoundEnded(PlayerPoints),
     PlayerDeck(Vec<Card>),
     SetStart(Card),
     SetEnded(PlayerPoints),
     GameEnded,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(tag = "type", content = "data")]
-pub enum ServerMessage {
-    Authorized(UserClaims),
-    Game(ServerGameMessage),
 }
