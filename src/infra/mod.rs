@@ -2,6 +2,8 @@ pub mod auth;
 pub mod game;
 pub mod lobby;
 
+use std::collections::HashMap;
+
 use auth::UserClaims;
 use axum::http::StatusCode;
 use mongodb::bson::oid::ObjectId;
@@ -45,6 +47,8 @@ pub struct JoinLobbyDto {
     pub players: Vec<PlayerStatus>,
 }
 
+type PlayerPoints = HashMap<String, usize>;
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum ServerGameMessage {
@@ -53,8 +57,11 @@ pub enum ServerGameMessage {
     PlayerBidded { player_id: String, bid: usize },
     PlayerBiddingTurn { player_id: String },
     PlayerReady { player_id: String },
-    RoundEnded,
+    RoundEnded(PlayerPoints),
     PlayerDeck(Vec<Card>),
+    SetStart(Card),
+    SetEnded(PlayerPoints),
+    GameEnded,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
