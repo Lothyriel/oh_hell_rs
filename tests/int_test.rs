@@ -56,6 +56,8 @@ mod tests {
             )
         };
 
+        //p1 receives himself and p2 ready
+        assert_game_msg(&mut p1_s, player_ready_predicate).await;
         assert_game_msg(&mut p1_s, player_ready_predicate).await;
         assert_game_msg(&mut p2_s, player_ready_predicate).await;
 
@@ -64,17 +66,12 @@ mod tests {
 
         let p2_deck = get_deck(&mut p2_s).await;
         assert!(p2_deck.len() == 1);
-
-        println!("{:?}", p1_deck);
-        println!("{:?}", p2_deck);
-
-        panic!("erro");
     }
 
     async fn get_deck(stream: &mut WebSocket) -> Vec<Card> {
-        match assert_game_msg(stream, |_| true).await {
+        match assert_game_msg(stream, |m| matches!(m, ServerMessage::PlayerDeck(_))).await {
             ServerMessage::PlayerDeck(c) => c,
-            _ => panic!("Message not expected"),
+            _ => panic!("Should be a deck message"),
         }
     }
 
@@ -85,8 +82,11 @@ mod tests {
         let msg = recv_msg(stream).await;
 
         match predicate(&msg) {
-            true => msg,
-            false => panic!("Message not expected"),
+            true => {
+                println!("Asserted game msg {msg:?}");
+                msg
+            }
+            false => panic!("Message not expected {msg:?}"),
         }
     }
 
