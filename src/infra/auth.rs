@@ -38,12 +38,12 @@ pub async fn middleware(mut req: Request, next: Next) -> Result<impl IntoRespons
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct LoginParams {
     pub nickname: String,
-    pub picture_index: usize,
+    pub picture: String,
 }
 #[derive(serde::Serialize, serde::Deserialize)]
 struct AnonymousUserClaimsDto {
     id: ObjectId,
-    picture_index: usize,
+    picture: String,
     name: String,
     iss: String,
     exp: usize,
@@ -56,7 +56,7 @@ async fn login(
 ) -> Json<TokenResponse> {
     let claims = AnonymousUserClaimsDto {
         id: ObjectId::new(),
-        picture_index: params.picture_index,
+        picture: params.picture,
         name: params.nickname,
         iss: "https://fodinha.click".to_string(),
         exp: 10000000000,
@@ -115,7 +115,7 @@ fn get_anonymous_claims(token: &str) -> Result<UserClaims, AuthError> {
 
     let claims = AnonymousUserClaims {
         id: claims.id,
-        picture_index: claims.picture_index,
+        picture: claims.picture,
         name: claims.name,
     };
 
@@ -192,7 +192,7 @@ impl UserClaims {
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct AnonymousUserClaims {
     id: ObjectId,
-    picture_index: usize,
+    picture: String,
     name: String,
 }
 

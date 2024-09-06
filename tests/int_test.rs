@@ -150,7 +150,7 @@ mod tests {
 
     async fn login(client: &mut Client) -> String {
         let params = LoginParams {
-            picture_index: 0,
+            picture: "picture.jpg".to_string(),
             nickname: "JX".to_string(),
         };
 
