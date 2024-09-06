@@ -2,12 +2,12 @@ use std::collections::{BinaryHeap, HashMap};
 
 use crate::models::GameError;
 
-use super::{BiddingError, Card, DealingMode, GameEvent, GameState, Player, Turn, TurnError};
+use super::{BiddingError, Card, DealingMode, GameEvent, Player, Turn, TurnError};
 
 #[derive(Debug)]
 pub struct Game {
     decks: HashMap<String, Player>,
-    players: Vec<String>,
+    pub players: Vec<String>,
     hand_index: usize,
     current_player_index: usize,
     turn_cards: BinaryHeap<Turn>,
@@ -41,6 +41,13 @@ impl Game {
             dealing_mode: DealingMode::Increasing,
             current_cards_count: 1,
         })
+    }
+
+    pub fn clone_decks(&self) -> HashMap<String, Vec<Card>> {
+        self.decks
+            .iter()
+            .map(|(id, p)| (id.clone(), p.deck.clone()))
+            .collect()
     }
 
     pub fn advance(&mut self, turn: Turn) -> Result<GameEvent, TurnError> {

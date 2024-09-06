@@ -37,12 +37,14 @@ impl Manager {
         }
     }
 
-    pub async fn create_lobby(&self, user: UserClaims) -> ObjectId {
+    pub async fn create_lobby(&self, _user: UserClaims) -> ObjectId {
         let mut manager = self.inner.lobby.lock().await;
+
+        // TODO create a way that a user can't spam create lobbies
 
         let lobby_id = ObjectId::new();
 
-        manager.lobbies.insert(lobby_id, Lobby::new(user));
+        manager.lobbies.insert(lobby_id, Lobby::new());
 
         lobby_id
     }
@@ -72,55 +74,71 @@ impl Manager {
         Ok(players)
     }
 
-    pub async fn play_turn(&self, card: Card, player_id: String) -> Result<Turn, LobbyError> {
-        let mut manager = self.inner.lobby.lock().await;
+    pub async fn play_turn(&self, card: Card, player_id: String) -> Result<(), LobbyError> {
+        let (players, turn) = {
+            let mut manager = self.inner.lobby.lock().await;
 
-        let game_id = {
-            *manager
-                .players_lobby
-                .get(&player_id)
-                .ok_or(LobbyError::WrongLobby)?
+            let game_id = {
+                *manager
+                    .players_lobby
+                    .get(&player_id)
+                    .ok_or(LobbyError::WrongLobby)?
+            };
+
+            let lobby = manager
+                .lobbies
+                .get_mut(&game_id)
+                .ok_or(LobbyError::InvalidLobby)?;
+
+            if !lobby.players.contains_key(&player_id) {
+                return Err(LobbyError::WrongLobby);
+            }
+
+            let game = lobby.get_game()?;
+
+            let turn = Turn { player_id, card };
+
+            // TODO figure this 'state return' situation out
+            let _state = game
+                .advance(turn.clone())
+                .map_err(|e| LobbyError::GameError(GameError::InvalidTurn(e)))?;
+
+            (lobby.get_players_id(), turn)
         };
 
-        let lobby = manager
-            .lobbies
-            .get_mut(&game_id)
-            .ok_or(LobbyError::InvalidLobby)?;
+        let msg = ServerMessage::TurnPlayed { turn };
+        self.broadcast_msg(&players, &msg).await;
 
-        if !lobby.players.contains_key(&player_id) {
-            return Err(LobbyError::WrongLobby);
-        }
-
-        let game = lobby.get_game()?;
-
-        let turn = Turn { player_id, card };
-
-        let state = game
-            .advance(turn.clone())
-            .map_err(|e| LobbyError::GameError(GameError::InvalidTurn(e)))?;
-
-        Ok(turn)
+        Ok(())
     }
 
-    pub async fn bid(&self, bid: usize, player_id: &str) -> Result<(), LobbyError> {
-        let mut manager = self.inner.lobby.lock().await;
+    pub async fn bid(&self, bid: usize, player_id: String) -> Result<(), LobbyError> {
+        let players = {
+            let mut manager = self.inner.lobby.lock().await;
 
-        let lobby_id = {
-            *manager
-                .players_lobby
-                .get(player_id)
-                .ok_or(LobbyError::WrongLobby)?
+            let lobby_id = {
+                *manager
+                    .players_lobby
+                    .get(&player_id)
+                    .ok_or(LobbyError::WrongLobby)?
+            };
+
+            let lobby = manager
+                .lobbies
+                .get_mut(&lobby_id)
+                .ok_or(LobbyError::InvalidLobby)?;
+
+            let game = lobby.get_game()?;
+
+            game.bid(&player_id, bid)
+                .map_err(|e| LobbyError::GameError(GameError::InvalidBid(e)))?;
+
+            lobby.get_players_id()
         };
 
-        let lobby = manager
-            .lobbies
-            .get_mut(&lobby_id)
-            .ok_or(LobbyError::InvalidLobby)?;
+        let msg = ServerMessage::PlayerBidded { player_id, bid };
 
-        let game = lobby.get_game()?;
-
-        game.bid(player_id, bid)
-            .map_err(|e| LobbyError::GameError(GameError::InvalidBid(e)))?;
+        self.broadcast_msg(&players, &msg).await;
 
         Ok(())
     }
@@ -161,7 +179,7 @@ impl Manager {
             .get_mut(player_id)
             .ok_or(ManagerError::PlayerDisconnected)?;
 
-        send_msg(&message, connection).await
+        send_msg(message, connection).await
     }
 
     pub async fn send_disconnect(&self, player_id: &str, reason: ManagerError) {
@@ -198,8 +216,8 @@ impl Manager {
         }
     }
 
-    pub async fn player_ready(&self, player_id: String, ready: bool) -> Result<bool, LobbyError> {
-        let (started, players) = {
+    pub async fn player_ready(&self, player_id: String, ready: bool) -> Result<(), LobbyError> {
+        let (players, start_info) = {
             let mut manager = self.inner.lobby.lock().await;
 
             let lobby_id = {
@@ -222,30 +240,60 @@ impl Manager {
 
             players_ready.insert(player_id.clone());
 
-            let players = players_ready.iter().cloned().collect();
+            let players: Vec<_> = players_ready.iter().cloned().collect();
 
             let should_start = players_ready.len() == lobby.players.len();
 
-            if should_start {
+            let start_info = if should_start {
                 let game = Game::new(lobby.get_players_id())?;
-                lobby.game = GameState::Running(game);
-            }
 
-            (should_start, players)
+                let decks = game.clone_decks();
+
+                let first = game.players[0].clone();
+
+                lobby.game = GameState::Running(game);
+
+                Some((decks, first))
+            } else {
+                None
+            };
+
+            (players, start_info)
         };
 
         let msg = ServerMessage::PlayerStatusChange { player_id, ready };
-        self.broadcast_msg(players, &msg).await;
+        self.broadcast_msg(&players, &msg).await;
 
-        Ok(started)
+        if let Some((decks, first)) = start_info {
+            self.start_game(decks, first).await;
+        }
+
+        Ok(())
     }
 
-    async fn broadcast_msg(&self, players_ready: Vec<String>, msg: &ServerMessage) {
-        for p in players_ready {
+    async fn start_game(&self, decks: HashMap<String, Vec<Card>>, first: String) {
+        let players: Vec<_> = decks.keys().cloned().collect();
+
+        for (p, deck) in decks {
+            let msg = ServerMessage::PlayerDeck(deck);
+
+            if let Err(e) = self.unicast_msg(&p, &msg).await {
+                tracing::error!("Error while unicasting: {p} | {e}");
+            }
+        }
+
+        let msg = ServerMessage::PlayerTurn { player_id: first };
+        self.broadcast_msg(&players, &msg).await;
+    }
+
+    async fn broadcast_msg(&self, players: &[String], msg: &ServerMessage) {
+        for p in players {
             let mut connections = self.inner.connections.lock().await;
 
-            if let Some(c) = connections.get_mut(&p) {
-                send_msg(&msg, c).await;
+            if let Some(c) = connections.get_mut(p) {
+                if let Err(e) = send_msg(msg, c).await {
+                    tracing::error!("Error broadcasting to: {p} | {e}");
+                }
             }
         }
     }
@@ -332,7 +380,7 @@ impl PlayerStatus {
 }
 
 impl Lobby {
-    fn new(owner: UserClaims) -> Self {
+    fn new() -> Self {
         Self {
             players: HashMap::new(),
             game: GameState::NotStarted(HashSet::new()),

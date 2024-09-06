@@ -16,7 +16,7 @@ use crate::{
 
 use super::{
     auth::{self, UserClaims},
-    ClientGameMessage, ServerMessage,
+    ClientGameMessage,
 };
 
 pub async fn ws_handler(
@@ -48,7 +48,7 @@ async fn handle_connection(
     tokio::spawn(async move {
         while let Some(Ok(message)) = receiver.next().await {
             let id = auth.id();
-            match handle_response(message, who, &manager, &id).await {
+            match process_msg(message, who, manager.clone(), id.clone()).await {
                 Ok(_) => {}
                 Err(error) => {
                     tracing::error!("{error} | {who} closing connection");
@@ -62,17 +62,6 @@ async fn handle_connection(
     .expect("This task should complete successfully");
 
     Ok(())
-}
-
-async fn handle_response(
-    message: Message,
-    who: SocketAddr,
-    manager: &Manager,
-    player_id: &str,
-) -> Result<(), ManagerError> {
-    let response = process_msg(message, who, manager.clone(), player_id.to_string()).await?;
-
-    manager.unicast_msg(player_id, &response).await
 }
 
 async fn get_auth(receiver: &mut SplitStream<WebSocket>) -> Result<UserClaims, ManagerError> {
@@ -101,7 +90,7 @@ async fn process_msg(
     who: SocketAddr,
     manager: Manager,
     player_id: String,
-) -> Result<ServerMessage, ManagerError> {
+) -> Result<(), ManagerError> {
     match msg {
         Message::Text(message) => {
             tracing::debug!(">>>> {who} sent text message: {message:?}");
@@ -135,21 +124,18 @@ async fn handle_game_msg(
     message: ClientGameMessage,
     manager: Manager,
     player_id: String,
-) -> Result<ServerMessage, ManagerError> {
-    let response = match message {
-        ClientGameMessage::PlayTurn { card } => {
-            let turn = manager.play_turn(card, player_id).await?;
-            ServerMessage::TurnPlayed { turn }
-        }
-        ClientGameMessage::PutBid { bid } => {
-            manager.bid(bid, &player_id).await?;
-            ServerMessage::PlayerBidded { player_id, bid }
-        }
+) -> Result<(), ManagerError> {
+    let result = match message {
+        ClientGameMessage::PlayTurn { card } => manager.play_turn(card, player_id).await,
+        ClientGameMessage::PutBid { bid } => manager.bid(bid, player_id).await,
         ClientGameMessage::PlayerStatusChange { ready } => {
-            manager.player_ready(player_id.clone(), ready).await?;
-            ServerMessage::PlayerStatusChange { player_id, ready }
+            manager.player_ready(player_id, ready).await
         }
     };
 
-    Ok(response)
+    // TODO all these messages should be broadcasted cause every client needs to know them
+    // maybe take a look at the `old` setup of sending the message here
+    // and then send only specifics messages inside the manager (but is prob not worth the hassle)
+
+    Ok(result?)
 }
