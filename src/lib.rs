@@ -16,10 +16,9 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 pub async fn start_app() {
     tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or("debug,hyper=off".into()),
-        )
+        .with(tracing_subscriber::EnvFilter::from(
+            "debug,hyper=off,rustls::client::hs=error",
+        ))
         .with(tracing_subscriber::fmt::layer())
         .init();
 
