@@ -150,10 +150,10 @@ impl Manager {
         Ok(())
     }
 
-    pub async fn send_message(
+    pub async fn unicast_msg(
         &self,
         player_id: &str,
-        message: ServerMessage,
+        message: &ServerMessage,
     ) -> Result<(), ManagerError> {
         let mut manager = self.inner.connections.lock().await;
 
@@ -161,12 +161,7 @@ impl Manager {
             .get_mut(player_id)
             .ok_or(ManagerError::PlayerDisconnected)?;
 
-        let message = serde_json::to_string(&message)?;
-
-        connection
-            .send(Message::Text(message))
-            .await
-            .map_err(|_| ManagerError::PlayerDisconnected)
+        send_msg(&message, connection).await
     }
 
     pub async fn send_disconnect(&self, player_id: &str, reason: ManagerError) {
@@ -203,39 +198,69 @@ impl Manager {
         }
     }
 
-    pub async fn player_ready(&self, player_id: String) -> Result<bool, LobbyError> {
-        let mut manager = self.inner.lobby.lock().await;
+    pub async fn player_ready(&self, player_id: String, ready: bool) -> Result<bool, LobbyError> {
+        let (started, players) = {
+            let mut manager = self.inner.lobby.lock().await;
 
-        let lobby_id = {
-            *manager
-                .players_lobby
-                .get(&player_id)
-                .ok_or(LobbyError::WrongLobby)?
+            let lobby_id = {
+                *manager
+                    .players_lobby
+                    .get(&player_id)
+                    .ok_or(LobbyError::WrongLobby)?
+            };
+
+            let lobby = manager
+                .lobbies
+                .get_mut(&lobby_id)
+                .ok_or(LobbyError::InvalidLobby)?;
+
+            let players_ready = match lobby.game.borrow_mut() {
+                GameState::NotStarted(p) => p,
+                GameState::Running(_) => return Err(LobbyError::GameAlreadyStarted),
+                GameState::Ended { winner: _, game: _ } => return Err(LobbyError::GameNotStarted),
+            };
+
+            players_ready.insert(player_id.clone());
+
+            let players = players_ready.iter().cloned().collect();
+
+            let should_start = players_ready.len() == lobby.players.len();
+
+            if should_start {
+                let game = Game::new(lobby.get_players_id())?;
+                lobby.game = GameState::Running(game);
+            }
+
+            (should_start, players)
         };
 
-        let lobby = manager
-            .lobbies
-            .get_mut(&lobby_id)
-            .ok_or(LobbyError::InvalidLobby)?;
+        let msg = ServerMessage::PlayerStatusChange { player_id, ready };
+        self.broadcast_msg(players, &msg).await;
 
-        let players_ready = match lobby.game.borrow_mut() {
-            GameState::NotStarted(p) => p,
-            GameState::Running(_) => return Err(LobbyError::GameAlreadyStarted),
-            GameState::Ended { winner: _, game: _ } => return Err(LobbyError::GameNotStarted),
-        };
-
-        players_ready.insert(player_id);
-
-        if players_ready.len() != lobby.players.len() {
-            return Ok(false);
-        };
-
-        let game = Game::new(lobby.get_players_id())?;
-
-        lobby.game = GameState::Running(game);
-
-        Ok(true)
+        Ok(started)
     }
+
+    async fn broadcast_msg(&self, players_ready: Vec<String>, msg: &ServerMessage) {
+        for p in players_ready {
+            let mut connections = self.inner.connections.lock().await;
+
+            if let Some(c) = connections.get_mut(&p) {
+                send_msg(&msg, c).await;
+            }
+        }
+    }
+}
+
+async fn send_msg(
+    message: &ServerMessage,
+    connection: &mut Connection,
+) -> Result<(), ManagerError> {
+    let message = serde_json::to_string(message)?;
+
+    connection
+        .send(Message::Text(message))
+        .await
+        .map_err(|_| ManagerError::PlayerDisconnected)
 }
 
 #[derive(thiserror::Error, Debug)]

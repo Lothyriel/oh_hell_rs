@@ -70,9 +70,9 @@ async fn handle_response(
     manager: &Manager,
     player_id: &str,
 ) -> Result<(), ManagerError> {
-    let response = process_message(message, who, manager.clone(), player_id.to_string()).await?;
+    let response = process_msg(message, who, manager.clone(), player_id.to_string()).await?;
 
-    manager.send_message(player_id, response).await
+    manager.unicast_msg(player_id, &response).await
 }
 
 async fn get_auth(receiver: &mut SplitStream<WebSocket>) -> Result<UserClaims, ManagerError> {
@@ -96,7 +96,7 @@ async fn get_auth(receiver: &mut SplitStream<WebSocket>) -> Result<UserClaims, M
     }
 }
 
-async fn process_message(
+async fn process_msg(
     msg: Message,
     who: SocketAddr,
     manager: Manager,
@@ -109,7 +109,7 @@ async fn process_message(
             let message = serde_json::from_str(&message)?;
 
             match message {
-                ClientMessage::Game(g) => handle_game_message(g, manager, player_id).await,
+                ClientMessage::Game(g) => handle_game_msg(g, manager, player_id).await,
                 ClientMessage::Auth(a) => {
                     tracing::error!("Unexpected auth message {a}");
                     Err(ManagerError::UnexpectedValidMessage(
@@ -131,7 +131,7 @@ async fn process_message(
     }
 }
 
-async fn handle_game_message(
+async fn handle_game_msg(
     message: ClientGameMessage,
     manager: Manager,
     player_id: String,
@@ -146,7 +146,7 @@ async fn handle_game_message(
             ServerMessage::PlayerBidded { player_id, bid }
         }
         ClientGameMessage::PlayerStatusChange { ready } => {
-            manager.player_ready(player_id.clone()).await?;
+            manager.player_ready(player_id.clone(), ready).await?;
             ServerMessage::PlayerStatusChange { player_id, ready }
         }
     };
