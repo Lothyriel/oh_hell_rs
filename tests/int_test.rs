@@ -8,7 +8,7 @@ mod tests {
         infra::{
             auth::{LoginParams, TokenResponse},
             lobby::CreateLobbyResponse,
-            ClientGameMessage, ClientMessage, JoinLobbyDto, ServerGameMessage, ServerMessage,
+            ClientGameMessage, ClientMessage, JoinLobbyDto, ServerMessage, ServerMessage,
         },
         models::Card,
     };
@@ -46,10 +46,10 @@ mod tests {
         send_msg(&mut p2_s, ClientGameMessage::Ready).await;
 
         let player_ready_predicate =
-            |m: &ServerGameMessage| matches!(m, ServerGameMessage::PlayerReady { player_id: _ });
+            |m: &ServerMessage| matches!(m, ServerMessage::PlayerReady { player_id: _ });
 
-        recv_game_msg(&mut p1_s, player_ready_predicate).await;
-        recv_game_msg(&mut p2_s, player_ready_predicate).await;
+        assert_game_msg(&mut p1_s, player_ready_predicate).await;
+        assert_game_msg(&mut p2_s, player_ready_predicate).await;
 
         let p1_deck = get_deck(&mut p1_s).await;
         let p2_deck = get_deck(&mut p2_s).await;
@@ -64,24 +64,21 @@ mod tests {
     }
 
     async fn get_deck(stream: &mut WebSocket) -> Vec<Card> {
-        match recv_game_msg(stream, |_| true).await {
-            ServerGameMessage::PlayerDeck(c) => c,
+        match assert_game_msg(stream, |_| true).await {
+            ServerMessage::PlayerDeck(c) => c,
             _ => panic!("Message not expected"),
         }
     }
 
-    async fn recv_game_msg<F>(stream: &mut WebSocket, predicate: F) -> ServerGameMessage
+    async fn assert_game_msg<F>(stream: &mut WebSocket, predicate: F) -> ServerMessage
     where
-        F: Fn(&ServerGameMessage) -> bool,
+        F: Fn(&ServerMessage) -> bool,
     {
         let msg = recv_msg(stream).await;
 
-        match msg {
-            ServerMessage::Authorized(_) => panic!("Not expected"),
-            ServerMessage::Game(g) => match predicate(&g) {
-                true => g,
-                false => panic!("Message not expected"),
-            },
+        match predicate(&msg) {
+            true => msg,
+            false => panic!("Message not expected"),
         }
     }
 
