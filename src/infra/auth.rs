@@ -23,16 +23,7 @@ pub fn router() -> Router<Manager> {
 
 pub static JWT_KEY: OnceLock<String> = OnceLock::new();
 
-pub async fn middleware(
-    State(manager): State<Manager>,
-    mut req: Request,
-    next: Next,
-) -> Result<impl IntoResponse, AuthError> {
-    let who = *req
-        .extensions()
-        .get::<ConnectInfo<SocketAddr>>()
-        .expect("We should get the IP here");
-
+pub async fn middleware(mut req: Request, next: Next) -> Result<impl IntoResponse, AuthError> {
     let token = get_token_from_req(&mut req)
         .await
         .ok_or(AuthError::TokenNotPresent)?;
@@ -40,15 +31,6 @@ pub async fn middleware(
     let claims = get_claims_from_token(token).await?;
 
     req.extensions_mut().insert(claims.clone());
-
-    let insert = manager
-        .auth_repo
-        .insert_login(&LoginDto::new(claims, who.to_string()))
-        .await;
-
-    if let Err(e) = insert {
-        tracing::error!("Error while saving login info | {e}")
-    }
 
     Ok(next.run(req).await)
 }
@@ -67,7 +49,11 @@ struct AnonymousUserClaimsDto {
     exp: usize,
 }
 
-async fn login(Json(params): Json<LoginParams>) -> Json<TokenResponse> {
+async fn login(
+    State(manager): State<Manager>,
+    ConnectInfo(who): ConnectInfo<SocketAddr>,
+    Json(params): Json<LoginParams>,
+) -> Json<TokenResponse> {
     let claims = AnonymousUserClaimsDto {
         id: ObjectId::new(),
         picture_index: params.picture_index,
@@ -75,6 +61,15 @@ async fn login(Json(params): Json<LoginParams>) -> Json<TokenResponse> {
         iss: "https://fodinha.click".to_string(),
         exp: 10000000000,
     };
+
+    let insert = manager
+        .auth_repo
+        .insert_login(&LoginDto::new(claims.id.to_string(), who.to_string()))
+        .await;
+
+    if let Err(e) = insert {
+        tracing::error!("Error while saving login info | {e}")
+    }
 
     let token = jsonwebtoken::encode(
         &Header::default(),

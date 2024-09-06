@@ -7,10 +7,7 @@ use axum::{
     },
     response::IntoResponse,
 };
-use futures::{
-    stream::{SplitSink, SplitStream},
-    SinkExt, StreamExt,
-};
+use futures::{stream::SplitStream, StreamExt};
 
 use crate::{
     infra::ClientMessage,
@@ -19,7 +16,7 @@ use crate::{
 
 use super::{
     auth::{self, UserClaims},
-    ClientGameMessage, ServerGameMessage, ServerMessage,
+    ClientGameMessage, ServerMessage,
 };
 
 pub async fn ws_handler(
@@ -42,11 +39,9 @@ async fn handle_connection(
     who: SocketAddr,
     manager: Manager,
 ) -> Result<(), ManagerError> {
-    let (mut sender, mut receiver) = socket.split();
+    let (sender, mut receiver) = socket.split();
 
     let auth = get_auth(&mut receiver).await?;
-
-    ack_auth(auth.clone(), &mut sender).await?;
 
     manager.store_player_connection(auth.id(), sender).await?;
 
@@ -65,22 +60,6 @@ async fn handle_connection(
     })
     .await
     .expect("This task should complete successfully");
-
-    Ok(())
-}
-
-async fn ack_auth(
-    claims: UserClaims,
-    sender: &mut SplitSink<WebSocket, Message>,
-) -> Result<(), ManagerError> {
-    let welcome = ServerMessage::Authorized(claims);
-
-    let welcome = serde_json::to_string(&welcome)?;
-
-    sender
-        .send(Message::Text(welcome))
-        .await
-        .map_err(|_| ManagerError::PlayerDisconnected)?;
 
     Ok(())
 }
@@ -129,19 +108,15 @@ async fn process_message(
 
             let message = serde_json::from_str(&message)?;
 
-            let result = match message {
-                ClientMessage::Game(g) => {
-                    ServerMessage::Game(handle_game_message(g, manager, player_id).await?)
-                }
+            match message {
+                ClientMessage::Game(g) => handle_game_message(g, manager, player_id).await,
                 ClientMessage::Auth(a) => {
                     tracing::error!("Unexpected auth message {a}");
-                    return Err(ManagerError::UnexpectedValidMessage(
+                    Err(ManagerError::UnexpectedValidMessage(
                         "Expected game message",
-                    ));
+                    ))
                 }
-            };
-
-            Ok(result)
+            }
         }
         Message::Close(c) => {
             let reason = c
@@ -160,19 +135,19 @@ async fn handle_game_message(
     message: ClientGameMessage,
     manager: Manager,
     player_id: String,
-) -> Result<ServerGameMessage, ManagerError> {
+) -> Result<ServerMessage, ManagerError> {
     let response = match message {
         ClientGameMessage::PlayTurn { card } => {
             let turn = manager.play_turn(card, player_id).await?;
-            ServerGameMessage::TurnPlayed { turn }
+            ServerMessage::TurnPlayed { turn }
         }
         ClientGameMessage::PutBid { bid } => {
             manager.bid(bid, &player_id).await?;
-            ServerGameMessage::PlayerBidded { player_id, bid }
+            ServerMessage::PlayerBidded { player_id, bid }
         }
-        ClientGameMessage::Ready => {
+        ClientGameMessage::PlayerStatusChange { ready } => {
             manager.player_ready(player_id.clone()).await?;
-            ServerGameMessage::PlayerReady { player_id }
+            ServerMessage::PlayerStatusChange { player_id, ready }
         }
     };
 

@@ -1,8 +1,6 @@
 use chrono::{DateTime, Utc};
 use mongodb::{error::Result, Collection, Database};
 
-use crate::infra::auth::UserClaims;
-
 #[derive(Clone)]
 pub struct AuthRepository {
     logins: Collection<LoginDto>,
@@ -24,15 +22,15 @@ impl AuthRepository {
 
 #[derive(serde::Serialize)]
 pub struct LoginDto {
-    claims: UserClaims,
+    id: String,
     ip: String,
     time: DateTime<Utc>,
 }
 
 impl LoginDto {
-    pub fn new(claims: UserClaims, ip: String) -> Self {
+    pub fn new(id: String, ip: String) -> Self {
         Self {
-            claims,
+            id,
             ip,
             time: Utc::now(),
         }
