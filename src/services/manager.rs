@@ -262,11 +262,9 @@ impl Manager {
 
                 let decks = game.clone_decks();
 
-                let first = game.players[0].clone();
-
                 lobby.game = GameState::Running(game);
 
-                Some((decks, first))
+                Some(decks)
             } else {
                 None
             };
@@ -277,15 +275,20 @@ impl Manager {
         let msg = ServerMessage::PlayerStatusChange { player_id, ready };
         self.broadcast_msg(&players, &msg).await;
 
-        if let Some((decks, first)) = start_info {
-            self.start_game(decks, first).await;
+        if let Some(decks) = start_info {
+            self.start_game(decks).await;
         }
 
         Ok(())
     }
 
-    async fn start_game(&self, decks: HashMap<String, Vec<Card>>, first: String) {
+    async fn start_game(&self, decks: IndexMap<String, Vec<Card>>) {
         let players: Vec<_> = decks.keys().cloned().collect();
+        let first = decks
+            .get_index(0)
+            .expect("Should have at least one player")
+            .0
+            .clone();
 
         for (p, deck) in decks {
             let msg = ServerMessage::PlayerDeck(deck);

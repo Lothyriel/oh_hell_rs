@@ -25,7 +25,7 @@ mod tests {
         let p2_token = login(&mut client).await;
 
         let p1_claims = get_claims_from_token(&p1_token).await.unwrap();
-        let p2_claims = get_claims_from_token(&p2_token).await.unwrap();
+        let _p2_claims = get_claims_from_token(&p2_token).await.unwrap();
 
         let lobby_id = create_lobby(&mut client, &p1_token).await;
 

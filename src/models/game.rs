@@ -1,4 +1,6 @@
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::BinaryHeap;
+
+use indexmap::IndexMap;
 
 use crate::models::GameError;
 
@@ -6,11 +8,10 @@ use super::{BiddingError, BiddingRound, Card, DealingMode, GameEvent, Player, Tu
 
 #[derive(Debug)]
 pub struct Game {
-    decks: HashMap<String, Player>,
-    pub players: Vec<String>,
+    decks: IndexMap<String, Player>,
     hand_index: usize,
     current_player_index: usize,
-    turn_cards: BinaryHeap<Turn>,
+    round_cards: BinaryHeap<Turn>,
     dealing_mode: DealingMode,
     current_cards_count: usize,
 }
@@ -22,20 +23,13 @@ impl Game {
     pub fn new(players: Vec<String>) -> Result<Self, GameError> {
         const INITIAL_HAND_INDEX: usize = 0;
 
-        if players.len() < 2 {
-            return Err(GameError::NotEnoughPlayers);
-        }
-
-        if players.len() > MAX_PLAYER_COUNT {
-            return Err(GameError::TooManyPlayers);
-        }
+        validate_game(&players)?;
 
         let decks = Self::get_decks(&players, INITIAL_HAND_INDEX + 1);
 
         Ok(Self {
             decks,
-            players,
-            turn_cards: BinaryHeap::new(),
+            round_cards: BinaryHeap::new(),
             current_player_index: INITIAL_HAND_INDEX,
             hand_index: INITIAL_HAND_INDEX,
             dealing_mode: DealingMode::Increasing,
@@ -43,7 +37,7 @@ impl Game {
         })
     }
 
-    pub fn clone_decks(&self) -> HashMap<String, Vec<Card>> {
+    pub fn clone_decks(&self) -> IndexMap<String, Vec<Card>> {
         self.decks
             .iter()
             .map(|(id, p)| (id.clone(), p.deck.clone()))
@@ -67,14 +61,15 @@ impl Game {
             return Err(TurnError::PlayersNotBidded);
         }
 
-        if self.players.len() == 1 {
-            return Ok(GameEvent::GameEnded(self.players[0].to_string()));
+        if self.decks.len() == 1 {
+            let first = self.decks.first().expect("Should contain one");
+            return Ok(GameEvent::GameEnded(first.0.to_string()));
         }
 
         self.current_player_index += 1;
-        self.turn_cards.push(turn);
+        self.round_cards.push(turn);
 
-        if self.turn_cards.len() == self.players.len() {
+        if self.round_cards.len() == self.decks.len() {
             self.remove_lifes();
             self.remove_losers();
             self.start_new_round();
@@ -100,29 +95,40 @@ impl Game {
         Ok(todo!("Need to implement a system to handle the bidding loop and to get the next player to bid"))
     }
 
+    pub fn next_bidder(&mut self) -> Option<String> {
+        todo!()
+    }
+
     fn get_current_player_id(&mut self) -> String {
-        if self.current_player_index == self.players.len() {
+        if self.current_player_index == self.decks.len() {
             self.current_player_index = 0;
         }
 
-        self.players[self.current_player_index].to_string()
+        let player = self
+            .decks
+            .get_index(self.current_player_index)
+            .expect("Should have this index");
+
+        player.0.to_string()
     }
 
     fn start_new_round(&mut self) {
         self.hand_index += 1;
 
-        if self.hand_index == self.players.len() {
+        if self.hand_index == self.decks.len() {
             self.hand_index = 0;
         }
 
         self.current_player_index = self.hand_index;
 
         let (mode, count) =
-            Self::get_new_cards_mode(self.dealing_mode, self.hand_index, self.players.len());
+            Self::get_new_cards_mode(self.dealing_mode, self.hand_index, self.decks.len());
 
         self.dealing_mode = mode;
 
-        self.decks = Self::get_decks(&self.players, count);
+        let players: Vec<_> = self.decks.keys().cloned().collect();
+
+        self.decks = Self::get_decks(&players, count);
     }
 
     fn get_new_cards_mode(
@@ -148,7 +154,7 @@ impl Game {
         }
     }
 
-    fn get_decks(players: &[String], cards: usize) -> HashMap<String, Player> {
+    fn get_decks(players: &[String], cards: usize) -> IndexMap<String, Player> {
         let mut deck = Card::shuffled_deck();
 
         players
@@ -169,19 +175,20 @@ impl Game {
     }
 
     fn remove_losers(&mut self) {
-        let dead_indexes = self
-            .decks
-            .iter()
-            .enumerate()
-            .filter(|(_, (_, p))| p.lifes == 0)
-            .map(|(i, _)| i);
-
-        for i in dead_indexes {
-            self.players.remove(i);
-        }
-
         self.decks.retain(|_, p| p.lifes != 0)
     }
+}
+
+fn validate_game(players: &[String]) -> Result<(), GameError> {
+    if players.len() < 2 {
+        return Err(GameError::NotEnoughPlayers);
+    }
+
+    if players.len() > MAX_PLAYER_COUNT {
+        return Err(GameError::TooManyPlayers);
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -195,7 +202,7 @@ mod tests {
 
         let mut game = Game::new(vec![player1.clone(), player2.clone()]).unwrap();
 
-        assert!(game.turn_cards.is_empty());
+        assert!(game.round_cards.is_empty());
         assert!(game.current_player_index == 0);
         assert!(game.hand_index == 0);
 
@@ -210,9 +217,9 @@ mod tests {
 
         game.advance(first_turn).unwrap();
 
-        assert!(game.turn_cards.len() == 1);
+        assert!(game.round_cards.len() == 1);
         assert!(game.current_player_index == 1);
-        assert!(game.turn_cards.peek().map(|t| t.card) == Some(first_played_card));
+        assert!(game.round_cards.peek().map(|t| t.card) == Some(first_played_card));
 
         let second_played_card = game.decks[&player2].deck[0];
         let second_turn = Turn {
@@ -222,7 +229,7 @@ mod tests {
 
         game.advance(second_turn).unwrap();
 
-        assert!(game.turn_cards.len() == 2);
+        assert!(game.round_cards.len() == 2);
         assert!(game.current_player_index == 1);
 
         assert!(game.hand_index == 1);
