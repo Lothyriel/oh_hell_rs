@@ -39,8 +39,6 @@ impl Manager {
     pub async fn create_lobby(&self, user_id: String) -> String {
         let mut manager = self.inner.lobby.lock().await;
 
-        // TODO create a way that a user can't spam create lobbies
-
         manager.lobbies.insert(user_id.clone(), Lobby::new());
 
         user_id

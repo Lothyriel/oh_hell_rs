@@ -5,7 +5,6 @@ pub mod lobby;
 use std::collections::HashMap;
 
 use axum::http::StatusCode;
-use mongodb::bson::oid::ObjectId;
 
 use crate::{
     models::{Card, Turn},
@@ -42,7 +41,7 @@ pub struct GetLobbyDto {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct JoinLobbyDto {
-    pub id: ObjectId,
+    pub id: String,
     pub players: Vec<PlayerStatus>,
 }
 

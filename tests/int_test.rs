@@ -1,9 +1,6 @@
-const URL: &str = "http://localhost:3000/";
-
 #[cfg(test)]
 mod tests {
     use futures::{stream::FusedStream, SinkExt, StreamExt};
-    use mongodb::bson::oid::ObjectId;
     use oh_hell::{
         infra::{
             auth::{get_claims_from_token, ProfileParams, TokenResponse},
@@ -16,7 +13,7 @@ mod tests {
     use tokio::{net::TcpStream, task};
     use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
-    use crate::URL;
+    const URL: &str = "http://localhost:3000/";
 
     #[tokio::test]
     async fn test_example() {
@@ -32,7 +29,7 @@ mod tests {
 
         let lobby_id = create_lobby(&mut client, &p1_token).await;
 
-        let lobby = join_lobby(&mut client, &p1_token, lobby_id).await;
+        let lobby = join_lobby(&mut client, &p1_token, lobby_id.clone()).await;
         assert!(lobby.players.len() == 1);
 
         let lobby = join_lobby(&mut client, &p2_token, lobby_id).await;
@@ -150,7 +147,7 @@ mod tests {
         msg
     }
 
-    async fn join_lobby(client: &mut Client, token: &str, lobby_id: ObjectId) -> JoinLobbyDto {
+    async fn join_lobby(client: &mut Client, token: &str, lobby_id: String) -> JoinLobbyDto {
         let res = client
             .put(format!("{URL}lobby/{lobby_id}"))
             .bearer_auth(token)
@@ -161,7 +158,7 @@ mod tests {
         res.json().await.unwrap()
     }
 
-    async fn create_lobby(client: &mut Client, token: &str) -> ObjectId {
+    async fn create_lobby(client: &mut Client, token: &str) -> String {
         let res = client
             .post(format!("{URL}lobby"))
             .bearer_auth(token)

@@ -3,7 +3,6 @@ use axum::{
     response::IntoResponse,
     routing, Extension, Json, Router,
 };
-use mongodb::bson::oid::ObjectId;
 use reqwest::StatusCode;
 
 use crate::{
@@ -27,9 +26,9 @@ async fn get_lobbies(State(manager): State<Manager>) -> Json<Vec<GetLobbyDto>> {
 async fn join_lobby(
     State(manager): State<Manager>,
     Extension(user_claims): Extension<UserClaims>,
-    Path(id): Path<ObjectId>,
+    Path(id): Path<String>,
 ) -> Result<Json<JoinLobbyDto>, LobbyError> {
-    let players = manager.join_lobby(id, user_claims).await?;
+    let players = manager.join_lobby(id.clone(), user_claims).await?;
 
     Ok(Json(JoinLobbyDto { players, id }))
 }
@@ -38,14 +37,14 @@ async fn create_lobby(
     State(manager): State<Manager>,
     Extension(user_claims): Extension<UserClaims>,
 ) -> Json<CreateLobbyResponse> {
-    let lobby_id = manager.create_lobby(user_claims).await;
+    let lobby_id = manager.create_lobby(user_claims.id()).await;
 
     Json(CreateLobbyResponse { lobby_id })
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct CreateLobbyResponse {
-    pub lobby_id: ObjectId,
+    pub lobby_id: String,
 }
 
 impl IntoResponse for LobbyError {
