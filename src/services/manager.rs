@@ -281,8 +281,8 @@ impl Manager {
                 tracing::error!("Error while unicasting: {p} | {e}");
             }
         }
-
-        let msg = ServerMessage::PlayerTurn { player_id: first };
+        // TODO create and store some way to know where we are in the bidding round
+        let msg = ServerMessage::PlayerBiddingTurn { player_id: first };
         self.broadcast_msg(&players, &msg).await;
     }
 
