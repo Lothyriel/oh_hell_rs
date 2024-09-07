@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     infra::{self, auth::UserClaims, GetLobbyDto, ServerMessage},
-    models::{BiddingError, BiddingRound, Card, Game, GameError, GameState, Turn, TurnError},
+    models::{BiddingError, Card, Game, GameError, GameState, RoundState, Turn, TurnError},
 };
 
 use super::repositories::{auth::AuthRepository, game::GamesRepository};
@@ -104,7 +104,7 @@ impl Manager {
 
             // TODO figure this 'state return' situation out
             let _state = game
-                .advance(turn.clone())
+                .deal(turn.clone())
                 .map_err(|e| LobbyError::GameError(GameError::InvalidTurn(e)))?;
 
             (lobby.get_players_id(), turn)
@@ -146,8 +146,8 @@ impl Manager {
         self.broadcast_msg(&players, &msg).await;
 
         let msg = match bidding {
-            BiddingRound::Active(player_id) => ServerMessage::PlayerBiddingTurn { player_id },
-            BiddingRound::Ended(player_id) => ServerMessage::PlayerTurn { player_id },
+            RoundState::Active(player_id) => ServerMessage::PlayerBiddingTurn { player_id },
+            RoundState::Ended(player_id) => ServerMessage::PlayerTurn { player_id },
         };
 
         self.broadcast_msg(&players, &msg).await;
