@@ -6,6 +6,7 @@ use std::{
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures::{stream::SplitSink, SinkExt};
+use indexmap::IndexMap;
 use tokio::sync::Mutex;
 
 use crate::{
@@ -366,11 +367,11 @@ struct LobbiesManager {
 }
 
 struct Lobby {
-    players: HashMap<String, PlayerStatus>,
+    players: IndexMap<String, PlayerStatus>,
     game: GameState,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct PlayerStatus {
     pub ready: bool,
     pub player: UserClaims,
@@ -387,7 +388,7 @@ impl PlayerStatus {
 impl Lobby {
     fn new() -> Self {
         Self {
-            players: HashMap::new(),
+            players: IndexMap::new(),
             game: GameState::NotStarted(HashSet::new()),
         }
     }

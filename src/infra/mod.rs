@@ -40,7 +40,7 @@ pub struct GetLobbyDto {
     pub player_count: usize,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct JoinLobbyDto {
     pub id: String,
     pub players: Vec<PlayerStatus>,
