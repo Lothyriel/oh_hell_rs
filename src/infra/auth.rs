@@ -205,7 +205,7 @@ impl IntoResponse for AuthError {
     }
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
 #[serde(tag = "type", content = "data")]
 pub enum UserClaims {
     Anonymous(AnonymousUserClaims),
@@ -221,14 +221,14 @@ impl UserClaims {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq, Debug)]
 pub struct AnonymousUserClaims {
     id: ObjectId,
     picture: String,
     name: String,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, PartialEq, Eq, Debug)]
 pub struct GoogleUserClaims {
     pub email: String,
     pub name: String,

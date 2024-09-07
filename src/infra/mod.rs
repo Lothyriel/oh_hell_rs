@@ -4,6 +4,7 @@ pub mod lobby;
 
 use std::collections::HashMap;
 
+use auth::UserClaims;
 use axum::http::StatusCode;
 
 use crate::{
@@ -60,4 +61,5 @@ pub enum ServerMessage {
     SetStart(Card),
     SetEnded(PlayerPoints),
     GameEnded,
+    PlayerJoined(UserClaims),
 }

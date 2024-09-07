@@ -49,24 +49,31 @@ impl Manager {
         lobby_id: String,
         user_claims: UserClaims,
     ) -> Result<Vec<PlayerStatus>, LobbyError> {
-        let mut manager = self.inner.lobby.lock().await;
+        let (players_status, players) = {
+            let mut manager = self.inner.lobby.lock().await;
 
-        let players = {
-            let lobby = manager
-                .lobbies
-                .get_mut(&lobby_id)
-                .ok_or(LobbyError::InvalidLobby)?;
+            let (players_status, players) = {
+                let lobby = manager
+                    .lobbies
+                    .get_mut(&lobby_id)
+                    .ok_or(LobbyError::InvalidLobby)?;
 
-            let status = PlayerStatus::new(user_claims.clone());
+                let status = PlayerStatus::new(user_claims.clone());
 
-            lobby.players.insert(user_claims.id(), status);
+                lobby.players.insert(user_claims.id(), status);
 
-            lobby.get_players()
+                (lobby.get_players(), lobby.get_players_id())
+            };
+
+            manager.players_lobby.insert(user_claims.id(), lobby_id);
+
+            (players_status, players)
         };
 
-        manager.players_lobby.insert(user_claims.id(), lobby_id);
+        let msg = ServerMessage::PlayerJoined(user_claims);
+        self.broadcast_msg(&players, &msg).await;
 
-        Ok(players)
+        Ok(players_status)
     }
 
     pub async fn play_turn(&self, card: Card, player_id: String) -> Result<(), LobbyError> {

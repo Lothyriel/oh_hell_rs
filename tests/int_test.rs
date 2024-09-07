@@ -160,6 +160,7 @@ mod tests {
             Message::Text(t) => serde_json::from_str(&t).unwrap(),
             _ => panic!("Wrong format"),
         };
+
         msg
     }
 
