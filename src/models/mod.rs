@@ -1,4 +1,5 @@
 mod game;
+pub mod iter;
 
 use std::collections::HashSet;
 
@@ -26,11 +27,6 @@ impl Ord for Turn {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.card.cmp(&other.card)
     }
-}
-
-pub enum BiddingRound {
-    Active(String),
-    Ended(String),
 }
 
 #[derive(Debug)]
@@ -115,14 +111,24 @@ pub enum Suit {
 #[derive(Debug)]
 pub enum GameState {
     NotStarted(HashSet<String>),
-    Running(Game),
-    Ended { winner: String, game: Game },
+    Running,
+    Ended { winner: String },
 }
 
-pub enum GameEvent {
-    RoundEnded,
-    GameEnded(String),
-    TurnPlayed,
+struct RoundInfo {
+    next: String,
+    state: RoundState,
+}
+
+impl RoundInfo {
+    fn new(next: String, state: RoundState) -> Self {
+        Self { next, state }
+    }
+}
+
+pub enum RoundState {
+    Active,
+    Ended,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -137,23 +143,27 @@ pub enum GameError {
     NotEnoughPlayers,
     #[error("Too many players")]
     TooManyPlayers,
-    #[error("Invalid turn")]
+    #[error("Invalid turn | {0}")]
     InvalidTurn(#[from] TurnError),
-    #[error("Invalid bid")]
+    #[error("Invalid bid | {0}")]
     InvalidBid(#[from] BiddingError),
 }
 
 #[derive(Debug, thiserror::Error, Display)]
 pub enum TurnError {
-    PlayersNotBidded,
+    BiddingStageActive,
     NotYourTurn,
     NotYourCard,
+    InvalidPlayer,
 }
 
 #[derive(Debug, thiserror::Error, Display)]
 pub enum BiddingError {
     InvalidPlayer,
     AlreadyBidded,
+    DealingStageActive,
+    NotYourTurn,
+    BidOutOfRange,
 }
 
 #[cfg(test)]
