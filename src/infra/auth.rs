@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::OnceLock};
+use std::{net::SocketAddr, str::FromStr, sync::OnceLock};
 
 use axum::{
     extract::{ConnectInfo, Request, State},
@@ -45,7 +45,7 @@ pub struct ProfileParams {
 }
 #[derive(serde::Serialize, serde::Deserialize)]
 struct AnonymousUserClaimsDto {
-    id: ObjectId,
+    id: String,
     picture: String,
     name: String,
     iss: String,
@@ -69,6 +69,11 @@ async fn update_profile(
         }
     };
 
+    if let Err(_) = ObjectId::from_str(&claim.id) {
+        let response = (StatusCode::UNPROCESSABLE_ENTITY, "Invalid ObjectId");
+        return Err(response.into_response());
+    };
+
     Ok(generate_token(params, manager, who, claim.id).await)
 }
 
@@ -77,14 +82,14 @@ async fn login(
     ConnectInfo(who): ConnectInfo<SocketAddr>,
     Json(params): Json<ProfileParams>,
 ) -> Json<TokenResponse> {
-    generate_token(params, manager, who, ObjectId::new()).await
+    generate_token(params, manager, who, ObjectId::new().to_hex()).await
 }
 
 async fn generate_token(
     params: ProfileParams,
     manager: Manager,
     who: SocketAddr,
-    id: ObjectId,
+    id: String,
 ) -> Json<TokenResponse> {
     let claims = AnonymousUserClaimsDto {
         id,
@@ -215,7 +220,7 @@ pub enum UserClaims {
 impl UserClaims {
     pub fn id(&self) -> String {
         match self {
-            UserClaims::Anonymous(a) => a.id.to_string(),
+            UserClaims::Anonymous(a) => a.id,
             UserClaims::Google(g) => g.email.clone(),
         }
     }
@@ -223,7 +228,7 @@ impl UserClaims {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq, Debug)]
 pub struct AnonymousUserClaims {
-    id: ObjectId,
+    id: String,
     picture: String,
     name: String,
 }
