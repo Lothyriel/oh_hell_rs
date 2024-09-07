@@ -151,10 +151,8 @@ impl Game {
     fn get_decks(players: &[String], cards: usize) -> HashMap<String, Player> {
         let mut deck = Card::shuffled_deck();
 
-        // TODO try to return a slice
-
         players
-            .into_iter()
+            .iter()
             .map(|p| {
                 (
                     p.to_string(),
