@@ -189,7 +189,9 @@ impl Manager {
 
         let connection = manager
             .get_mut(player_id)
-            .ok_or(ManagerError::PlayerDisconnected)?;
+            .ok_or(ManagerError::PlayerDisconnected(
+                "Player not in the stored connections".to_string(),
+            ))?;
 
         send_msg(message, connection).await
     }
@@ -206,7 +208,7 @@ impl Manager {
         };
 
         let code = match reason {
-            ManagerError::PlayerDisconnected => 1001,
+            ManagerError::PlayerDisconnected(_) => 1001,
             ManagerError::InvalidWebsocketMessageType => 1003,
             ManagerError::Lobby(_) => 1008,
             ManagerError::Turn(_) | ManagerError::Bid(_) => 1008,
@@ -324,13 +326,13 @@ async fn send_msg(
     connection
         .send(Message::Text(message))
         .await
-        .map_err(|_| ManagerError::PlayerDisconnected)
+        .map_err(|e| ManagerError::PlayerDisconnected(e.to_string()))
 }
 
 #[derive(thiserror::Error, Debug)]
 pub enum ManagerError {
-    #[error("Player disconnected")]
-    PlayerDisconnected,
+    #[error("Player disconnected | {0}")]
+    PlayerDisconnected(String),
     #[error("Error processing turn: {0:?}")]
     Turn(#[from] TurnError),
     #[error("Error processing bid: {0:?}")]
