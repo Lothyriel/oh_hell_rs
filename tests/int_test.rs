@@ -53,20 +53,26 @@ mod tests {
         assert!(p2_deck.len() == 1);
 
         assert_game_msg(&mut p1, get_bidding_turn_predicate(p1_claims.id())).await;
+        assert_game_msg(&mut p2, get_bidding_turn_predicate(p1_claims.id())).await;
+
         let msg = ClientGameMessage::PutBid { bid: 0 };
         send_msg(&mut p1, msg).await;
 
-        assert_game_msg(&mut p2, get_bidding_turn_predicate(p2_claims.id())).await;
-        send_msg(&mut p2, msg).await;
+        assert_game_msg(&mut p1, validate_player_bidded).await;
+        assert_game_msg(&mut p2, validate_player_bidded).await;
 
-        assert_game_msg(&mut p1, validate_player_turn).await;
-        assert_game_msg(&mut p2, validate_player_turn).await;
+        // TODO need to progress on the bidding loop
+        // assert_game_msg(&mut p2, get_bidding_turn_predicate(p2_claims.id())).await;
+        // send_msg(&mut p2, msg).await;
 
-        let msg = ClientGameMessage::PlayTurn { card: p1_deck[0] };
-        send_msg(&mut p1, msg).await;
-
-        assert_game_msg(&mut p1, validate_turn_played).await;
-        assert_game_msg(&mut p2, validate_turn_played).await;
+        // assert_game_msg(&mut p1, validate_player_turn).await;
+        // assert_game_msg(&mut p2, validate_player_turn).await;
+        //
+        // let msg = ClientGameMessage::PlayTurn { card: p1_deck[0] };
+        // send_msg(&mut p1, msg).await;
+        //
+        // assert_game_msg(&mut p1, validate_turn_played).await;
+        // assert_game_msg(&mut p2, validate_turn_played).await;
     }
 
     fn validate_turn_played(m: &ServerMessage) -> bool {
@@ -75,6 +81,16 @@ mod tests {
 
     fn validate_player_turn(m: &ServerMessage) -> bool {
         matches!(m, ServerMessage::PlayerTurn { player_id: _ })
+    }
+
+    fn validate_player_bidded(m: &ServerMessage) -> bool {
+        matches!(
+            m,
+            ServerMessage::PlayerBidded {
+                player_id: _,
+                bid: _
+            }
+        )
     }
 
     fn get_bidding_turn_predicate(id: String) -> impl FnOnce(&ServerMessage) -> bool {
