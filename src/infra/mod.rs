@@ -48,7 +48,7 @@ pub struct JoinLobbyDto {
 
 type PlayerPoints = HashMap<String, usize>;
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type", content = "data")]
 pub enum ServerMessage {
     PlayerTurn { player_id: String },
