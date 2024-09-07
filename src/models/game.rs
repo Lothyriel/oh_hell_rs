@@ -153,12 +153,7 @@ impl Game {
 
         players
             .iter()
-            .map(|p| {
-                (
-                    p.to_string(),
-                    Player::new(p.to_string(), deck.drain(..cards).collect()),
-                )
-            })
+            .map(|p| (p.to_string(), Player::new(deck.drain(..cards).collect())))
             .collect()
     }
 

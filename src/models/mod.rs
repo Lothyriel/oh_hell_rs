@@ -30,7 +30,6 @@ impl Ord for Turn {
 
 #[derive(Debug)]
 pub struct Player {
-    id: String,
     lifes: u8,
     deck: Vec<Card>,
     bid: Option<usize>,
@@ -38,11 +37,10 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new(id: String, deck: Vec<Card>) -> Self {
+    pub fn new(deck: Vec<Card>) -> Self {
         Self {
             lifes: 5,
             deck,
-            id,
             bid: None,
             rounds: 0,
         }
