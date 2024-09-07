@@ -23,7 +23,7 @@ const NOT_FOUND_RESPONSE: (StatusCode, &str) =
 #[serde(tag = "type", content = "data")]
 pub enum ClientMessage {
     Game(ClientGameMessage),
-    Auth(String),
+    Auth { token: String },
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Copy)]
