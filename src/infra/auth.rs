@@ -220,7 +220,7 @@ pub enum UserClaims {
 impl UserClaims {
     pub fn id(&self) -> String {
         match self {
-            UserClaims::Anonymous(a) => a.id,
+            UserClaims::Anonymous(a) => a.id.clone(),
             UserClaims::Google(g) => g.email.clone(),
         }
     }
