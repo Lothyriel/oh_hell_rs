@@ -2,7 +2,7 @@ use std::collections::{BinaryHeap, HashMap};
 
 use crate::models::GameError;
 
-use super::{BiddingError, Card, DealingMode, GameEvent, Player, Turn, TurnError};
+use super::{BiddingError, BiddingRound, Card, DealingMode, GameEvent, Player, Turn, TurnError};
 
 #[derive(Debug)]
 pub struct Game {
@@ -85,7 +85,7 @@ impl Game {
         Ok(GameEvent::TurnPlayed)
     }
 
-    pub fn bid(&mut self, player_id: &str, bid: usize) -> Result<(), BiddingError> {
+    pub fn bid(&mut self, player_id: &str, bid: usize) -> Result<BiddingRound, BiddingError> {
         let player = self
             .decks
             .get_mut(player_id)
@@ -97,7 +97,7 @@ impl Game {
 
         player.bid = Some(bid);
 
-        Ok(())
+        Ok(todo!("Need to implement a system to handle the bidding loop and to get the next player to bid"))
     }
 
     fn get_current_player_id(&mut self) -> String {

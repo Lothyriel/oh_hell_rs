@@ -28,6 +28,11 @@ impl Ord for Turn {
     }
 }
 
+pub enum BiddingRound {
+    Active(String),
+    Ended(String),
+}
+
 #[derive(Debug)]
 pub struct Player {
     lifes: u8,

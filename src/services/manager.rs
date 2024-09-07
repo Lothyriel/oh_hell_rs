@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     infra::{self, auth::UserClaims, GetLobbyDto, ServerMessage},
-    models::{BiddingError, Card, Game, GameError, GameState, Turn, TurnError},
+    models::{BiddingError, BiddingRound, Card, Game, GameError, GameState, Turn, TurnError},
 };
 
 use super::repositories::{auth::AuthRepository, game::GamesRepository};
@@ -117,7 +117,7 @@ impl Manager {
     }
 
     pub async fn bid(&self, bid: usize, player_id: String) -> Result<(), LobbyError> {
-        let players = {
+        let (players, bidding) = {
             let mut manager = self.inner.lobby.lock().await;
 
             let lobby_id = {
@@ -135,13 +135,20 @@ impl Manager {
 
             let game = lobby.get_game()?;
 
-            game.bid(&player_id, bid)
+            let bidding = game
+                .bid(&player_id, bid)
                 .map_err(|e| LobbyError::GameError(GameError::InvalidBid(e)))?;
 
-            lobby.get_players_id()
+            (lobby.get_players_id(), bidding)
         };
 
         let msg = ServerMessage::PlayerBidded { player_id, bid };
+        self.broadcast_msg(&players, &msg).await;
+
+        let msg = match bidding {
+            BiddingRound::Active(player_id) => ServerMessage::PlayerBiddingTurn { player_id },
+            BiddingRound::Ended(player_id) => ServerMessage::PlayerTurn { player_id },
+        };
 
         self.broadcast_msg(&players, &msg).await;
 
