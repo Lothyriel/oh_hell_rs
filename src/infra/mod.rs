@@ -36,7 +36,7 @@ pub enum ClientGameMessage {
 
 #[derive(serde::Serialize)]
 pub struct GetLobbyDto {
-    pub id: ObjectId,
+    pub id: String,
     pub player_count: usize,
 }
 

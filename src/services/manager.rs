@@ -6,7 +6,6 @@ use std::{
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures::{stream::SplitSink, SinkExt};
-use mongodb::bson::oid::ObjectId;
 use tokio::sync::Mutex;
 
 use crate::{
@@ -37,21 +36,19 @@ impl Manager {
         }
     }
 
-    pub async fn create_lobby(&self, _user: UserClaims) -> ObjectId {
+    pub async fn create_lobby(&self, user_id: String) -> String {
         let mut manager = self.inner.lobby.lock().await;
 
         // TODO create a way that a user can't spam create lobbies
 
-        let lobby_id = ObjectId::new();
+        manager.lobbies.insert(user_id.clone(), Lobby::new());
 
-        manager.lobbies.insert(lobby_id, Lobby::new());
-
-        lobby_id
+        user_id
     }
 
     pub async fn join_lobby(
         &self,
-        lobby_id: ObjectId,
+        lobby_id: String,
         user_claims: UserClaims,
     ) -> Result<Vec<PlayerStatus>, LobbyError> {
         let mut manager = self.inner.lobby.lock().await;
@@ -79,10 +76,11 @@ impl Manager {
             let mut manager = self.inner.lobby.lock().await;
 
             let game_id = {
-                *manager
+                manager
                     .players_lobby
                     .get(&player_id)
-                    .ok_or(LobbyError::WrongLobby)?
+                    .ok_or(LobbyError::WrongLobby)
+                    .cloned()?
             };
 
             let lobby = manager
@@ -117,10 +115,11 @@ impl Manager {
             let mut manager = self.inner.lobby.lock().await;
 
             let lobby_id = {
-                *manager
+                manager
                     .players_lobby
                     .get(&player_id)
-                    .ok_or(LobbyError::WrongLobby)?
+                    .ok_or(LobbyError::WrongLobby)
+                    .cloned()?
             };
 
             let lobby = manager
@@ -149,8 +148,8 @@ impl Manager {
         manager
             .lobbies
             .iter()
-            .map(|(&id, lobby)| GetLobbyDto {
-                id,
+            .map(|(id, lobby)| GetLobbyDto {
+                id: id.clone(),
                 player_count: lobby.players.len(),
             })
             .collect()
@@ -221,10 +220,11 @@ impl Manager {
             let mut manager = self.inner.lobby.lock().await;
 
             let lobby_id = {
-                *manager
+                manager
                     .players_lobby
                     .get(&player_id)
-                    .ok_or(LobbyError::WrongLobby)?
+                    .ok_or(LobbyError::WrongLobby)
+                    .cloned()?
             };
 
             let lobby = manager
@@ -355,9 +355,9 @@ struct InnerManager {
 type Connection = SplitSink<WebSocket, Message>;
 
 struct LobbiesManager {
-    lobbies: HashMap<ObjectId, Lobby>,
+    lobbies: HashMap<String, Lobby>,
     // TODO make sure to remove entries of this guy wherever is needed
-    players_lobby: HashMap<String, ObjectId>,
+    players_lobby: HashMap<String, String>,
 }
 
 struct Lobby {
