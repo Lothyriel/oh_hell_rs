@@ -69,7 +69,7 @@ async fn update_profile(
         }
     };
 
-    if let Err(_) = ObjectId::from_str(&claim.id) {
+    if ObjectId::from_str(&claim.id).is_err() {
         let response = (StatusCode::UNPROCESSABLE_ENTITY, "Invalid ObjectId");
         return Err(response.into_response());
     };
