@@ -308,9 +308,14 @@ impl Manager {
 
                 let (decks, trump) = game.clone_decks();
 
+                let first = game
+                    .current_player()
+                    .expect("Should have a next player")
+                    .clone();
+
                 lobby.state = LobbyState::Playing(game);
 
-                Some((decks, trump))
+                Some((decks, first, trump))
             } else {
                 None
             };
@@ -321,24 +326,18 @@ impl Manager {
         let msg = ServerMessage::PlayerStatusChange { player_id, ready };
         self.broadcast_msg(&players, &msg).await;
 
-        if let Some((decks, trump)) = start_info {
-            self.start_game(decks, trump).await;
+        if let Some((decks, first, trump)) = start_info {
+            self.start_game(decks, first, trump).await;
         }
 
         Ok(())
     }
 
-    async fn start_game(&self, decks: IndexMap<String, Vec<Card>>, trump: Card) {
+    async fn start_game(&self, decks: IndexMap<String, Vec<Card>>, first: String, trump: Card) {
         let players: Vec<_> = decks.keys().cloned().collect();
 
         let msg = ServerMessage::SetStart { trump };
         self.broadcast_msg(&players, &msg).await;
-
-        let first = decks
-            .get_index(0)
-            .expect("Should have at least one player")
-            .0
-            .clone();
 
         for (p, deck) in decks {
             let msg = ServerMessage::PlayerDeck(deck);
