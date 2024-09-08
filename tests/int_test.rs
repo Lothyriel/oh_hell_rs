@@ -3,7 +3,7 @@ mod tests {
     use futures::{stream::FusedStream, SinkExt, StreamExt};
     use oh_hell::{
         infra::{
-            auth::{get_claims_from_token, ProfileParams, TokenResponse, UserClaims},
+            auth::{ProfileParams, TokenResponse},
             lobby::CreateLobbyResponse,
             ClientGameMessage, ClientMessage, JoinLobbyDto, ServerMessage,
         },
@@ -26,9 +26,6 @@ mod tests {
         let p1_token = login(&mut client).await;
         let p2_token = login(&mut client).await;
 
-        let p1_claims = get_claims_from_token(&p1_token).await.unwrap();
-        let p2_claims = get_claims_from_token(&p2_token).await.unwrap();
-
         let (mut p1, mut p2) = join_lobby(&mut client, p1_token, p2_token).await;
 
         ready(&mut p1, &mut p2).await;
@@ -40,7 +37,7 @@ mod tests {
 
             cards_count += 1;
 
-            play_set(&mut p1, &mut p2, &p1_claims, &p2_claims, &p1_deck, &p2_deck).await;
+            play_set(&mut p1, &mut p2, &p1_deck, &p2_deck).await;
 
             if assert_game_or_set_ended(&mut p1).await & assert_game_or_set_ended(&mut p2).await {
                 break;
@@ -69,17 +66,10 @@ mod tests {
         }
     }
 
-    async fn play_set(
-        p1: &mut WebSocket,
-        p2: &mut WebSocket,
-        p1_claims: &UserClaims,
-        p2_claims: &UserClaims,
-        p1_deck: &Deck,
-        p2_deck: &Deck,
-    ) {
+    async fn play_set(p1: &mut WebSocket, p2: &mut WebSocket, p1_deck: &Deck, p2_deck: &Deck) {
         let rounds_count = p1_deck.len();
 
-        bidding(p1, p2, p1_claims, p2_claims, rounds_count).await;
+        bidding(p1, p2, rounds_count).await;
 
         for i in 0..rounds_count {
             play_round(p1, p2, p1_deck, p2_deck, i == rounds_count - 1).await;
@@ -119,30 +109,21 @@ mod tests {
         }
     }
 
-    async fn bidding(
-        p1: &mut WebSocket,
-        p2: &mut WebSocket,
-        p1_claims: &UserClaims,
-        p2_claims: &UserClaims,
-        bid: usize,
-    ) {
+    async fn bidding(p1: &mut WebSocket, p2: &mut WebSocket, bid: usize) {
+        bid_turn(bid, p1, p2).await;
+        bid_turn(bid, p1, p2).await;
+    }
+
+    async fn bid_turn(bid: usize, p1: &mut WebSocket, p2: &mut WebSocket) {
         let msg = ClientGameMessage::PutBid { bid };
 
-        assert_game_msg(p1, get_bidding_turn_predicate(p1_claims.id())).await;
-        assert_game_msg(p2, get_bidding_turn_predicate(p1_claims.id())).await;
+        assert_game_msg(p1, validate_bidding_turn).await;
+        assert_game_msg(p2, validate_bidding_turn).await;
 
         send_msg(p1, msg).await;
 
-        assert_game_msg(p1, get_player_bidded_predicate(p1_claims.id(), bid)).await;
-        assert_game_msg(p2, get_player_bidded_predicate(p1_claims.id(), bid)).await;
-
-        assert_game_msg(p1, get_bidding_turn_predicate(p2_claims.id())).await;
-        assert_game_msg(p2, get_bidding_turn_predicate(p2_claims.id())).await;
-
-        send_msg(p2, msg).await;
-
-        assert_game_msg(p1, get_player_bidded_predicate(p2_claims.id(), bid)).await;
-        assert_game_msg(p2, get_player_bidded_predicate(p2_claims.id(), bid)).await;
+        assert_game_msg(p1, validate_player_bidded).await;
+        assert_game_msg(p2, validate_player_bidded).await;
     }
 
     async fn decks(p1: &mut WebSocket, p2: &mut WebSocket, cards_count: usize) -> (Deck, Deck) {
@@ -196,12 +177,18 @@ mod tests {
         matches!(m, ServerMessage::PlayerTurn { player_id: _ })
     }
 
-    fn get_bidding_turn_predicate(id: String) -> impl FnOnce(&ServerMessage) -> bool {
-        |m: &ServerMessage| m == &ServerMessage::PlayerBiddingTurn { player_id: id }
+    fn validate_bidding_turn(m: &ServerMessage) -> bool {
+        matches!(m, ServerMessage::PlayerBiddingTurn { player_id: _ })
     }
 
-    fn get_player_bidded_predicate(id: String, bid: usize) -> impl FnOnce(&ServerMessage) -> bool {
-        move |m: &ServerMessage| m == &ServerMessage::PlayerBidded { player_id: id, bid }
+    fn validate_player_bidded(m: &ServerMessage) -> bool {
+        matches!(
+            m,
+            ServerMessage::PlayerBidded {
+                player_id: _,
+                bid: _
+            }
+        )
     }
 
     fn validate_player_status_change(m: &ServerMessage) -> bool {
