@@ -42,7 +42,7 @@ mod tests {
         send_msg(&mut p1, msg).await;
         send_msg(&mut p2, msg).await;
 
-        //p2 receives himself and p1 ready
+        assert_game_msg(&mut p1, validate_player_status_change).await;
         assert_game_msg(&mut p1, validate_player_status_change).await;
         assert_game_msg(&mut p2, validate_player_status_change).await;
         assert_game_msg(&mut p2, validate_player_status_change).await;
