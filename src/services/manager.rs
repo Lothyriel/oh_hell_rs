@@ -266,8 +266,6 @@ impl Manager {
                 players_ready.remove(&player_id)
             };
 
-            let players: Vec<_> = players_ready.iter().cloned().collect();
-
             let should_start = players_ready.len() == lobby.players.len();
 
             let start_info = if should_start {
@@ -282,7 +280,7 @@ impl Manager {
                 None
             };
 
-            (players, start_info)
+            (lobby.get_players_id(), start_info)
         };
 
         let msg = ServerMessage::PlayerStatusChange { player_id, ready };
