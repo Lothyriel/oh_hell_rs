@@ -3,7 +3,7 @@ mod tests {
     use futures::{stream::FusedStream, SinkExt, StreamExt};
     use oh_hell::{
         infra::{
-            auth::{get_claims_from_token, ProfileParams, TokenResponse},
+            auth::{get_claims_from_token, ProfileParams, TokenResponse, UserClaims},
             lobby::CreateLobbyResponse,
             ClientGameMessage, ClientMessage, JoinLobbyDto, ServerMessage,
         },
@@ -21,58 +21,117 @@ mod tests {
 
         let mut client = reqwest::Client::new();
 
+        // TODO make this test work for 2-10 players
+
         let p1_token = login(&mut client).await;
         let p2_token = login(&mut client).await;
 
         let p1_claims = get_claims_from_token(&p1_token).await.unwrap();
-        let _p2_claims = get_claims_from_token(&p2_token).await.unwrap();
+        let p2_claims = get_claims_from_token(&p2_token).await.unwrap();
 
-        let lobby_id = create_lobby(&mut client, &p1_token).await;
+        let (mut p1, mut p2) = join_lobby(&mut client, p1_token, p2_token).await;
 
-        let lobby = join_lobby(&mut client, &p1_token, lobby_id.clone()).await;
-        assert!(lobby.players.len() == 1);
+        ready(&mut p1, &mut p2).await;
 
-        let lobby = join_lobby(&mut client, &p2_token, lobby_id).await;
-        assert!(lobby.players.len() == 2);
+        let (p1_deck, p2_deck) = decks(&mut p1, &mut p2).await;
 
-        let mut p1 = connect_ws(p1_token).await;
-        let mut p2 = connect_ws(p2_token).await;
+        bidding(&mut p1, &mut p2, &p1_claims, &p2_claims).await;
 
-        let msg = ClientGameMessage::PlayerStatusChange { ready: true };
-        send_msg(&mut p1, msg).await;
-        send_msg(&mut p2, msg).await;
+        play_round(&mut p1, &mut p2, p1_deck, p2_deck).await;
+    }
 
-        assert_game_msg(&mut p1, validate_player_status_change).await;
-        assert_game_msg(&mut p1, validate_player_status_change).await;
-        assert_game_msg(&mut p2, validate_player_status_change).await;
-        assert_game_msg(&mut p2, validate_player_status_change).await;
+    type Deck = Vec<Card>;
 
-        let p1_deck = get_deck(&mut p1).await;
-        let p2_deck = get_deck(&mut p2).await;
+    async fn play_round(p1: &mut WebSocket, p2: &mut WebSocket, p1_deck: Deck, p2_deck: Deck) {
+        assert_game_msg(p1, validate_player_turn).await;
+        assert_game_msg(p2, validate_player_turn).await;
+
+        let msg = ClientGameMessage::PlayTurn { card: p1_deck[0] };
+        send_msg(p1, msg).await;
+
+        assert_game_msg(p1, validate_turn_played).await;
+        assert_game_msg(p2, validate_turn_played).await;
+
+        assert_game_msg(p1, validate_player_turn).await;
+        assert_game_msg(p2, validate_player_turn).await;
+
+        let msg = ClientGameMessage::PlayTurn { card: p2_deck[0] };
+        send_msg(p2, msg).await;
+
+        assert_game_msg(p1, validate_turn_played).await;
+        assert_game_msg(p2, validate_turn_played).await;
+
+        assert_game_msg(p1, validate_round_ended).await;
+        assert_game_msg(p2, validate_round_ended).await;
+    }
+
+    async fn bidding(
+        p1: &mut WebSocket,
+        p2: &mut WebSocket,
+        p1_claims: &UserClaims,
+        p2_claims: &UserClaims,
+    ) {
+        let bid = 0;
+        let msg = ClientGameMessage::PutBid { bid };
+
+        assert_game_msg(p1, get_bidding_turn_predicate(p1_claims.id())).await;
+        assert_game_msg(p2, get_bidding_turn_predicate(p1_claims.id())).await;
+
+        send_msg(p1, msg).await;
+
+        assert_game_msg(p1, get_player_bidded_predicate(p1_claims.id(), bid)).await;
+        assert_game_msg(p2, get_player_bidded_predicate(p1_claims.id(), bid)).await;
+
+        assert_game_msg(p1, get_bidding_turn_predicate(p2_claims.id())).await;
+        assert_game_msg(p2, get_bidding_turn_predicate(p2_claims.id())).await;
+
+        send_msg(p2, msg).await;
+
+        assert_game_msg(p1, get_player_bidded_predicate(p2_claims.id(), bid)).await;
+        assert_game_msg(p2, get_player_bidded_predicate(p2_claims.id(), bid)).await;
+    }
+
+    async fn decks(p1: &mut WebSocket, p2: &mut WebSocket) -> (Deck, Deck) {
+        assert_game_msg(p1, validate_set_start).await;
+        assert_game_msg(p2, validate_set_start).await;
+
+        let p1_deck = get_deck(p1).await;
+        let p2_deck = get_deck(p2).await;
         assert!(p1_deck.len() == 1);
         assert!(p2_deck.len() == 1);
 
-        assert_game_msg(&mut p1, get_bidding_turn_predicate(p1_claims.id())).await;
-        assert_game_msg(&mut p2, get_bidding_turn_predicate(p1_claims.id())).await;
+        (p1_deck, p2_deck)
+    }
 
-        let msg = ClientGameMessage::PutBid { bid: 0 };
-        send_msg(&mut p1, msg).await;
+    async fn join_lobby(client: &mut Client, p1: String, p2: String) -> (WebSocket, WebSocket) {
+        let lobby_id = create_lobby(client, &p1).await;
 
-        assert_game_msg(&mut p1, validate_player_bidded).await;
-        assert_game_msg(&mut p2, validate_player_bidded).await;
+        let lobby = join_lobby_http(client, &p1, lobby_id.clone()).await;
+        assert!(lobby.players.len() == 1);
 
-        // TODO need to progress on the bidding loop
-        // assert_game_msg(&mut p2, get_bidding_turn_predicate(p2_claims.id())).await;
-        // send_msg(&mut p2, msg).await;
+        let lobby = join_lobby_http(client, &p2, lobby_id).await;
+        assert!(lobby.players.len() == 2);
 
-        // assert_game_msg(&mut p1, validate_player_turn).await;
-        // assert_game_msg(&mut p2, validate_player_turn).await;
-        //
-        // let msg = ClientGameMessage::PlayTurn { card: p1_deck[0] };
-        // send_msg(&mut p1, msg).await;
-        //
-        // assert_game_msg(&mut p1, validate_turn_played).await;
-        // assert_game_msg(&mut p2, validate_turn_played).await;
+        let p1 = connect_ws(p1).await;
+        let p2 = connect_ws(p2).await;
+
+        (p1, p2)
+    }
+
+    async fn ready(p1: &mut WebSocket, p2: &mut WebSocket) {
+        let msg = ClientGameMessage::PlayerStatusChange { ready: true };
+
+        send_msg(p1, msg).await;
+        send_msg(p2, msg).await;
+
+        assert_game_msg(p1, validate_player_status_change).await;
+        assert_game_msg(p1, validate_player_status_change).await;
+        assert_game_msg(p2, validate_player_status_change).await;
+        assert_game_msg(p2, validate_player_status_change).await;
+    }
+
+    fn validate_round_ended(m: &ServerMessage) -> bool {
+        matches!(m, ServerMessage::RoundEnded(_))
     }
 
     fn validate_turn_played(m: &ServerMessage) -> bool {
@@ -83,18 +142,12 @@ mod tests {
         matches!(m, ServerMessage::PlayerTurn { player_id: _ })
     }
 
-    fn validate_player_bidded(m: &ServerMessage) -> bool {
-        matches!(
-            m,
-            ServerMessage::PlayerBidded {
-                player_id: _,
-                bid: _
-            }
-        )
-    }
-
     fn get_bidding_turn_predicate(id: String) -> impl FnOnce(&ServerMessage) -> bool {
         |m: &ServerMessage| m == &ServerMessage::PlayerBiddingTurn { player_id: id }
+    }
+
+    fn get_player_bidded_predicate(id: String, bid: usize) -> impl FnOnce(&ServerMessage) -> bool {
+        move |m: &ServerMessage| m == &ServerMessage::PlayerBidded { player_id: id, bid }
     }
 
     fn validate_player_status_change(m: &ServerMessage) -> bool {
@@ -107,7 +160,11 @@ mod tests {
         )
     }
 
-    async fn get_deck(stream: &mut WebSocket) -> Vec<Card> {
+    fn validate_set_start(m: &ServerMessage) -> bool {
+        matches!(m, ServerMessage::SetStart { trump: _ })
+    }
+
+    async fn get_deck(stream: &mut WebSocket) -> Deck {
         match assert_game_msg(stream, |m| matches!(m, ServerMessage::PlayerDeck(_))).await {
             ServerMessage::PlayerDeck(c) => c,
             _ => panic!("Should be a deck message"),
@@ -164,7 +221,7 @@ mod tests {
         msg
     }
 
-    async fn join_lobby(client: &mut Client, token: &str, lobby_id: String) -> JoinLobbyDto {
+    async fn join_lobby_http(client: &mut Client, token: &str, lobby_id: String) -> JoinLobbyDto {
         let res = client
             .put(format!("{URL}lobby/{lobby_id}"))
             .bearer_auth(token)
