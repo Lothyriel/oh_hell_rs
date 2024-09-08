@@ -102,7 +102,7 @@ impl Manager {
 
             let turn = Turn { player_id, card };
 
-            // TODO figure this 'state return' situation out
+            // TODO implement events broadcast
             let _state = game
                 .deal(turn.clone())
                 .map_err(|e| LobbyError::GameError(GameError::InvalidTurn(e)))?;
@@ -271,11 +271,11 @@ impl Manager {
             let start_info = if should_start {
                 let game = Game::new(lobby.get_players_id())?;
 
-                let decks = game.clone_decks();
+                let (decks, trump) = game.clone_decks();
 
                 lobby.state = LobbyState::Playing(game);
 
-                Some(decks)
+                Some((decks, trump))
             } else {
                 None
             };
@@ -286,15 +286,19 @@ impl Manager {
         let msg = ServerMessage::PlayerStatusChange { player_id, ready };
         self.broadcast_msg(&players, &msg).await;
 
-        if let Some(decks) = start_info {
-            self.start_game(decks).await;
+        if let Some((decks, trump)) = start_info {
+            self.start_game(decks, trump).await;
         }
 
         Ok(())
     }
 
-    async fn start_game(&self, decks: IndexMap<String, Vec<Card>>) {
+    async fn start_game(&self, decks: IndexMap<String, Vec<Card>>, trump: Card) {
         let players: Vec<_> = decks.keys().cloned().collect();
+
+        let msg = ServerMessage::SetStart { trump };
+        self.broadcast_msg(&players, &msg).await;
+
         let first = decks
             .get_index(0)
             .expect("Should have at least one player")
@@ -308,7 +312,7 @@ impl Manager {
                 tracing::error!("Error while unicasting: {p} | {e}");
             }
         }
-        // TODO create and store some way to know where we are in the bidding round
+
         let msg = ServerMessage::PlayerBiddingTurn { player_id: first };
         self.broadcast_msg(&players, &msg).await;
     }
