@@ -131,7 +131,7 @@ async fn handle_game_msg(
         ClientGameMessage::PlayTurn { card } => manager.play_turn(card, player_id).await,
         ClientGameMessage::PutBid { bid } => manager.bid(bid, player_id).await,
         ClientGameMessage::PlayerStatusChange { ready } => {
-            manager.player_ready(player_id, ready).await
+            manager.player_status_change(player_id, ready).await
         }
     };
 

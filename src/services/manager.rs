@@ -234,7 +234,11 @@ impl Manager {
         }
     }
 
-    pub async fn player_ready(&self, player_id: String, ready: bool) -> Result<(), LobbyError> {
+    pub async fn player_status_change(
+        &self,
+        player_id: String,
+        ready: bool,
+    ) -> Result<(), LobbyError> {
         let (players, start_info) = {
             let mut manager = self.inner.lobby.lock().await;
 
@@ -256,7 +260,11 @@ impl Manager {
                 LobbyState::Playing(_) => return Err(LobbyError::GameAlreadyStarted),
             };
 
-            players_ready.insert(player_id.clone());
+            if ready {
+                players_ready.insert(player_id.clone())
+            } else {
+                players_ready.remove(&player_id)
+            };
 
             let players: Vec<_> = players_ready.iter().cloned().collect();
 
