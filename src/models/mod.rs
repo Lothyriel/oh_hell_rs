@@ -1,7 +1,7 @@
 mod game;
 pub mod iter;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub use game::Game;
 
@@ -31,7 +31,7 @@ impl Ord for Turn {
 
 #[derive(Debug)]
 pub struct Player {
-    lifes: u8,
+    lifes: usize,
     deck: Vec<Card>,
     bid: Option<usize>,
     rounds: usize,
@@ -109,15 +109,20 @@ pub enum Suit {
 }
 
 #[derive(Debug)]
-pub enum GameState {
+pub enum LobbyState {
     NotStarted(HashSet<String>),
-    Running,
+    Playing(Game),
+}
+
+pub enum GameEvent {
+    SetEnded(HashMap<String, usize>),
+    RoundEnded(HashMap<String, usize>),
     Ended { winner: String },
 }
 
-struct RoundInfo {
-    next: String,
-    state: RoundState,
+pub struct RoundInfo {
+    pub next: String,
+    pub state: RoundState,
 }
 
 impl RoundInfo {
@@ -126,6 +131,7 @@ impl RoundInfo {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub enum RoundState {
     Active,
     Ended,
