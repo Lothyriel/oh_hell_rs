@@ -58,7 +58,7 @@ pub enum ServerMessage {
     PlayerStatusChange { player_id: String, ready: bool },
     RoundEnded(PlayerPoints),
     PlayerDeck(Vec<Card>),
-    SetStart(Card),
+    SetStart { trump: Card },
     SetEnded(PlayerPoints),
     GameEnded,
     PlayerJoined(UserClaims),
