@@ -107,19 +107,18 @@ impl Game {
             })
         }
 
-        Ok((self.get_round_state(), events))
-    }
-
-    fn get_round_state(&mut self) -> RoundInfo {
         self.cyclic.next();
 
-        match self.cyclic.peek() {
+        let info = match self.cyclic.peek() {
             Some(n) => RoundInfo::new(n.clone(), RoundState::Active),
             None => {
-                let next = self.cyclic.reset();
+                let next = self.cyclic.advance();
+
                 RoundInfo::new(next, RoundState::Ended)
             }
-        }
+        };
+
+        Ok((info, events))
     }
 
     pub fn bid(&mut self, player_id: &String, bid: usize) -> Result<RoundInfo, BiddingError> {
@@ -148,7 +147,18 @@ impl Game {
 
         player.bid = Some(bid);
 
-        Ok(self.get_round_state())
+        self.cyclic.next();
+
+        let info = match self.cyclic.peek() {
+            Some(n) => RoundInfo::new(n.clone(), RoundState::Active),
+            None => {
+                let next = self.cyclic.reset();
+
+                RoundInfo::new(next, RoundState::Ended)
+            }
+        };
+
+        Ok(info)
     }
 
     fn get_cycle_stage(&mut self) -> CycleStage {

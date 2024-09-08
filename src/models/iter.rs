@@ -21,9 +21,14 @@ impl<T: Clone> CyclicIterator<T> {
         }
     }
 
-    pub fn reset(&mut self) -> T {
+    pub fn advance(&mut self) -> T {
         self.iteration_count = 0;
         self.current_index += 1;
+        self.items[self.current_index].clone()
+    }
+
+    pub fn reset(&mut self) -> T {
+        self.iteration_count = 0;
         self.items[self.current_index].clone()
     }
 
@@ -63,7 +68,7 @@ mod tests {
         let result: Vec<_> = cyclic.by_ref().collect();
         assert_eq!(result, vec);
 
-        cyclic.reset();
+        cyclic.advance();
 
         let result: Vec<_> = cyclic.collect();
         assert_eq!(result, vec![1, 2, 3, 4, 5, 0]);
@@ -90,7 +95,7 @@ mod tests {
         let vec: Vec<&str> = vec![];
         assert_eq!(vec, result);
 
-        cyclic.reset();
+        cyclic.advance();
 
         let result: Vec<_> = cyclic.collect();
         assert_eq!(result, vec!["banana", "cherry", "apple"]);
