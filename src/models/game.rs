@@ -16,6 +16,7 @@ pub struct Game {
     dealing_mode: DealingMode,
     cyclic: CyclicIterator<String>,
     cards_count: usize,
+    trump: Card,
 }
 
 #[derive(PartialEq, Debug)]
@@ -33,7 +34,7 @@ impl Game {
 
         let initial_cards_count = 1;
 
-        let decks = Self::get_decks(&players, initial_cards_count);
+        let (decks, trump) = Self::get_decks(&players, initial_cards_count);
 
         Ok(Self {
             decks,
@@ -41,14 +42,18 @@ impl Game {
             dealing_mode: DealingMode::Increasing,
             cards_count: initial_cards_count,
             cyclic: CyclicIterator::new(players),
+            trump,
         })
     }
 
-    pub fn clone_decks(&self) -> IndexMap<String, Vec<Card>> {
-        self.decks
+    pub fn clone_decks(&self) -> (IndexMap<String, Vec<Card>>, Card) {
+        let decks = self
+            .decks
             .iter()
             .map(|(id, p)| (id.clone(), p.deck.clone()))
-            .collect()
+            .collect();
+
+        (decks, self.trump)
     }
 
     pub fn deal(&mut self, turn: Turn) -> Result<(RoundInfo, Vec<GameEvent>), TurnError> {
@@ -177,7 +182,7 @@ impl Game {
 
         let players: Vec<_> = self.decks.keys().cloned().collect();
 
-        self.decks = Self::get_decks(&players, count);
+        (self.decks, self.trump) = Self::get_decks(&players, count);
     }
 
     fn get_new_cards_mode(
@@ -203,13 +208,15 @@ impl Game {
         }
     }
 
-    fn get_decks(players: &[String], cards: usize) -> IndexMap<String, Player> {
+    fn get_decks(players: &[String], cards: usize) -> (IndexMap<String, Player>, Card) {
         let mut deck = Card::shuffled_deck();
 
-        players
+        let decks = players
             .iter()
             .map(|p| (p.to_string(), Player::new(deck.drain(..cards).collect())))
-            .collect()
+            .collect();
+
+        (decks, deck[0])
     }
 
     fn remove_lifes(&mut self) {
