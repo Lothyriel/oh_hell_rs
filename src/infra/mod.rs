@@ -60,6 +60,6 @@ pub enum ServerMessage {
     PlayerDeck(Vec<Card>),
     SetStart { trump: Card },
     SetEnded(PlayerPoints),
-    GameEnded { winner: String },
+    GameEnded { winner: String, lifes: PlayerPoints },
     PlayerJoined(UserClaims),
 }

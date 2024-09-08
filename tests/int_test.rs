@@ -1,7 +1,5 @@
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use futures::{stream::FusedStream, SinkExt, StreamExt};
     use oh_hell::{
         infra::{
@@ -38,15 +36,18 @@ mod tests {
         loop {
             let (p1_deck, p2_deck) = decks(&mut p1, &mut p2).await;
 
-            let players_lifes =
-                play_set(&mut p1, &mut p2, &p1_claims, &p2_claims, &p1_deck, &p2_deck).await;
+            play_set(&mut p1, &mut p2, &p1_claims, &p2_claims, &p1_deck, &p2_deck).await;
 
-            if players_lifes.iter().filter(|(_, &lifes)| lifes > 0).count() == 1 {
-                break;
+            match recv_msg(&mut p1).await {
+                ServerMessage::SetEnded(_) => {}
+                ServerMessage::GameEnded { winner, lifes } => {
+                    if lifes.iter().filter(|(_, &lifes)| lifes > 0).count() == 1 {
+                        break;
+                    }
+                }
+                _ => panic!("Expected Set or Game end"),
             }
         }
-
-        assert_game_msg(&mut p1, validate_game_ended).await;
     }
 
     async fn play_set(
@@ -56,18 +57,13 @@ mod tests {
         p2_claims: &UserClaims,
         p1_deck: &Deck,
         p2_deck: &Deck,
-    ) -> HashMap<String, usize> {
+    ) {
         let rounds_count = p1_deck.len();
 
         bidding(p1, p2, p1_claims, p2_claims, rounds_count).await;
 
         for i in 0..rounds_count {
             play_round(p1, p2, p1_deck, p2_deck, i == rounds_count - 1).await;
-        }
-
-        match assert_game_msg(p1, validate_set_ended).await {
-            ServerMessage::SetEnded(lifes) => lifes,
-            _ => panic!("Expected SetEnded"),
         }
     }
 
@@ -167,14 +163,6 @@ mod tests {
         assert_game_msg(p1, validate_player_status_change).await;
         assert_game_msg(p2, validate_player_status_change).await;
         assert_game_msg(p2, validate_player_status_change).await;
-    }
-
-    fn validate_game_ended(m: &ServerMessage) -> bool {
-        matches!(m, ServerMessage::GameEnded { winner: _ })
-    }
-
-    fn validate_set_ended(m: &ServerMessage) -> bool {
-        matches!(m, ServerMessage::SetEnded(_))
     }
 
     fn validate_round_ended(m: &ServerMessage) -> bool {
