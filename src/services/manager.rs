@@ -80,7 +80,7 @@ impl Manager {
     }
 
     pub async fn play_turn(&self, card: Card, player_id: String) -> Result<(), LobbyError> {
-        let (players, (turn, (info, event))) = {
+        let (players, (turn, (info, event), set_info)) = {
             let mut manager = self.inner.lobby.lock().await;
 
             let game_id = {
@@ -108,7 +108,22 @@ impl Manager {
                 .deal(turn.clone())
                 .map_err(|e| LobbyError::GameError(GameError::InvalidTurn(e)))?;
 
-            (lobby.get_players_id(), (turn, state))
+            let set_ended = matches!(state.1, Some(GameEvent::SetEnded(_)));
+
+            let set_info = if set_ended {
+                let (decks, trump) = game.clone_decks();
+
+                let first = game
+                    .current_player()
+                    .expect("Should have a next player")
+                    .clone();
+
+                Some((decks, first, trump))
+            } else {
+                None
+            };
+
+            (lobby.get_players_id(), (turn, state, set_info))
         };
 
         let msg = ServerMessage::TurnPlayed { turn };
@@ -119,11 +134,9 @@ impl Manager {
                 let msg = ServerMessage::SetEnded(lifes);
                 self.broadcast_msg(&players, &msg).await;
 
-                let msg = ServerMessage::PlayerBiddingTurn {
-                    player_id: info.next,
-                };
+                let (decks, first, trump) = set_info.expect("Should contain set info");
 
-                self.broadcast_msg(&players, &msg).await;
+                self.init_set(decks, first, trump).await;
             }
             Some(GameEvent::RoundEnded(points)) => {
                 let msg = ServerMessage::RoundEnded(points);
@@ -274,7 +287,7 @@ impl Manager {
         player_id: String,
         ready: bool,
     ) -> Result<(), LobbyError> {
-        let (players, start_info) = {
+        let (players, set_info) = {
             let mut manager = self.inner.lobby.lock().await;
 
             let lobby_id = {
@@ -303,7 +316,7 @@ impl Manager {
 
             let should_start = players_ready.len() == lobby.players.len();
 
-            let start_info = if should_start {
+            let set_info = if should_start {
                 let game = Game::new(lobby.get_players_id())?;
 
                 let (decks, trump) = game.clone_decks();
@@ -320,20 +333,20 @@ impl Manager {
                 None
             };
 
-            (lobby.get_players_id(), start_info)
+            (lobby.get_players_id(), set_info)
         };
 
         let msg = ServerMessage::PlayerStatusChange { player_id, ready };
         self.broadcast_msg(&players, &msg).await;
 
-        if let Some((decks, first, trump)) = start_info {
-            self.start_game(decks, first, trump).await;
+        if let Some((decks, first, trump)) = set_info {
+            self.init_set(decks, first, trump).await;
         }
 
         Ok(())
     }
 
-    async fn start_game(&self, decks: IndexMap<String, Vec<Card>>, first: String, trump: Card) {
+    async fn init_set(&self, decks: IndexMap<String, Vec<Card>>, first: String, trump: Card) {
         let players: Vec<_> = decks.keys().cloned().collect();
 
         let msg = ServerMessage::SetStart { trump };
