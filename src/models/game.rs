@@ -1,20 +1,20 @@
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, HashMap};
 
 use indexmap::IndexMap;
 
 use crate::models::GameError;
 
 use super::{
-    iter::CyclicIterator, BiddingError, Card, DealingMode, GameState, Player, RoundInfo,
+    iter::CyclicIterator, BiddingError, Card, DealingMode, GameEvent, Player, RoundInfo,
     RoundState, Turn, TurnError,
 };
 
 #[derive(Debug)]
-pub struct Game<'a> {
+pub struct Game {
     decks: IndexMap<String, Player>,
     round_cards: BinaryHeap<Turn>,
     dealing_mode: DealingMode,
-    cyclic: CyclicIterator<'a, String>,
+    cyclic: CyclicIterator<String>,
     cards_count: usize,
 }
 
@@ -27,7 +27,7 @@ enum CycleStage {
 const MAX_AVAILABLE_CARDS: usize = 40 - 1;
 const MAX_PLAYER_COUNT: usize = 10;
 
-impl<'a> Game<'a> {
+impl Game {
     pub fn new(players: Vec<String>) -> Result<Self, GameError> {
         validate_game(&players)?;
 
@@ -51,7 +51,7 @@ impl<'a> Game<'a> {
             .collect()
     }
 
-    pub fn deal(&mut self, turn: Turn) -> Result<(RoundInfo, GameState), TurnError> {
+    pub fn deal(&mut self, turn: Turn) -> Result<(RoundInfo, Vec<GameEvent>), TurnError> {
         if self.get_cycle_stage() == CycleStage::Bidding {
             return Err(TurnError::BiddingStageActive);
         }
@@ -75,6 +75,7 @@ impl<'a> Game<'a> {
 
         //add card to the heap
         self.round_cards.push(turn);
+        let mut events = vec![];
 
         // finish round
         if self.round_cards.len() == self.decks.len() {
@@ -84,6 +85,7 @@ impl<'a> Game<'a> {
                 .next()
                 .expect("Should contain a turn");
 
+            events.push(GameEvent::RoundEnded(self.get_points()));
             self.award_points(winner.clone());
         }
 
@@ -91,21 +93,21 @@ impl<'a> Game<'a> {
         if self.decks.iter().all(|(_, p)| p.deck.is_empty()) {
             // todo send message when player loses a life
             self.remove_lifes();
-            // todo send message when player loses the game
             self.remove_losers();
+
+            events.push(GameEvent::SetEnded(self.get_lifes()));
+
             self.start_new_set();
         }
 
-        let game_state = if self.decks.len() == 1 {
+        if self.decks.len() == 1 {
             let first = self.decks.first().expect("Should contain one");
-            GameState::Ended {
+            events.push(GameEvent::Ended {
                 winner: first.0.to_string(),
-            }
-        } else {
-            GameState::Running
-        };
+            })
+        }
 
-        Ok((self.get_round_state(), game_state))
+        Ok((self.get_round_state(), events))
     }
 
     fn get_round_state(&mut self) -> RoundInfo {
@@ -223,6 +225,20 @@ impl<'a> Game<'a> {
 
         player.rounds += 1;
     }
+
+    fn get_points(&self) -> HashMap<String, usize> {
+        self.decks
+            .iter()
+            .map(|(id, player)| (id.clone(), player.rounds))
+            .collect()
+    }
+
+    fn get_lifes(&self) -> HashMap<String, usize> {
+        self.decks
+            .iter()
+            .map(|(id, player)| (id.clone(), player.lifes))
+            .collect()
+    }
 }
 
 fn validate_game(players: &[String]) -> Result<(), GameError> {
@@ -256,10 +272,13 @@ mod tests {
             card: first_played_card,
         };
 
-        game.bid(&player1, 1).unwrap();
-        game.bid(&player2, 1).unwrap();
+        let info = game.bid(&player1, 1).unwrap();
+        assert_eq!(info.next, player2);
+        assert_eq!(info.state, RoundState::Active);
 
-        println!("Pre deal 1 | {game:?}");
+        let info = game.bid(&player2, 1).unwrap();
+        assert_eq!(info.next, player1);
+        assert_eq!(info.state, RoundState::Ended);
 
         game.deal(first_turn).unwrap();
 
@@ -271,8 +290,6 @@ mod tests {
             player_id: player2.clone(),
             card: second_played_card,
         };
-
-        println!("Pre deal 2 | {game:?}");
 
         game.deal(second_turn).unwrap();
 

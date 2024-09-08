@@ -71,7 +71,7 @@ async fn get_auth(receiver: &mut SplitStream<WebSocket>) -> Result<UserClaims, M
                 let message: ClientMessage = serde_json::from_str(&message)?;
 
                 match message {
-                    ClientMessage::Auth(token) => Ok(auth::get_claims_from_token(&token).await?),
+                    ClientMessage::Auth { token } => Ok(auth::get_claims_from_token(&token).await?),
                     ClientMessage::Game(_) => Err(ManagerError::UnexpectedValidMessage(
                         "Expected auth message",
                     )),
@@ -81,7 +81,9 @@ async fn get_auth(receiver: &mut SplitStream<WebSocket>) -> Result<UserClaims, M
             _ => Err(ManagerError::InvalidWebsocketMessageType),
         }
     } else {
-        Err(ManagerError::PlayerDisconnected)
+        Err(ManagerError::PlayerDisconnected(
+            "PlayerDisconnected during auth handshake".to_string(),
+        ))
     }
 }
 
@@ -99,7 +101,7 @@ async fn process_msg(
 
             match message {
                 ClientMessage::Game(g) => handle_game_msg(g, manager, player_id).await,
-                ClientMessage::Auth(a) => {
+                ClientMessage::Auth { token: a } => {
                     tracing::error!("Unexpected auth message {a}");
                     Err(ManagerError::UnexpectedValidMessage(
                         "Expected game message",
@@ -114,7 +116,7 @@ async fn process_msg(
 
             tracing::warn!(">>>> {who} sent close message{}", reason);
 
-            Err(ManagerError::PlayerDisconnected)
+            Err(ManagerError::PlayerDisconnected(reason))
         }
         _ => Err(ManagerError::InvalidWebsocketMessageType),
     }

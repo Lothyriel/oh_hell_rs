@@ -1,49 +1,53 @@
 use core::panic;
-use std::{
-    iter::{Cycle, Peekable, Take},
-    vec::IntoIter,
-};
 
 #[derive(Debug)]
-pub struct CyclicIterator<'a, T: Clone> {
-    cyclic: Cycle<IntoIter<T>>,
-    n: usize,
-    iter: Peekable<Take<&'a mut Cycle<IntoIter<T>>>>,
+pub struct CyclicIterator<T: Clone> {
+    items: Vec<T>,
+    current_index: usize,
+
+    iteration_count: usize,
 }
 
-impl<'a, T: Clone> CyclicIterator<'a, T> {
+impl<T: Clone> CyclicIterator<T> {
     pub fn new(items: Vec<T>) -> Self {
         if items.is_empty() {
             panic!("The idea is to have at least one item to loop around")
         }
 
-        let mut cyclic = items.into_iter().cycle();
-
         CyclicIterator {
-            n: items.len(),
-            iter: cyclic.by_ref().take(items.len()).peekable(),
-            cyclic,
+            items,
+            current_index: 0,
+            iteration_count: 0,
         }
     }
 
     pub fn reset(&mut self) -> T {
-        self.iter = self.cyclic.by_ref().take(self.n).peekable();
-        self.iter
-            .peek()
-            .expect("Should contain at least one item")
-            .clone()
+        self.iteration_count = 0;
+        self.current_index += 1;
+        self.items[self.current_index].clone()
     }
 
     pub fn peek(&self) -> Option<&T> {
-        self.iter.peek()
+        if self.iteration_count < self.items.len() {
+            self.items.get(self.current_index)
+        } else {
+            None
+        }
     }
 }
 
-impl<'a, T: Clone> Iterator for CyclicIterator<'a, T> {
+impl<T: Clone> Iterator for CyclicIterator<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next()
+        if self.iteration_count < self.items.len() {
+            let item = self.items[self.current_index].clone();
+            self.current_index = (self.current_index + 1) % self.items.len();
+            self.iteration_count += 1;
+            Some(item)
+        } else {
+            None
+        }
     }
 }
 
@@ -56,12 +60,12 @@ mod tests {
         let vec = vec![0, 1, 2, 3, 4, 5];
         let mut cyclic = CyclicIterator::new(vec.clone());
 
-        let result: Vec<_> = cyclic.iter.collect();
+        let result: Vec<_> = cyclic.by_ref().collect();
         assert_eq!(result, vec);
 
         cyclic.reset();
 
-        let result: Vec<_> = cyclic.iter.collect();
+        let result: Vec<_> = cyclic.collect();
         assert_eq!(result, vec![1, 2, 3, 4, 5, 0]);
     }
 
@@ -70,10 +74,8 @@ mod tests {
         let vec = vec!['A'];
         let mut cyclic = CyclicIterator::new(vec);
 
-        let take = cyclic.iter;
-
-        assert_eq!(take.next(), Some('A'));
-        assert_eq!(take.next(), None);
+        assert_eq!(cyclic.next(), Some('A'));
+        assert_eq!(cyclic.next(), None);
     }
 
     #[test]
@@ -81,10 +83,16 @@ mod tests {
         let vec = vec!["apple", "banana", "cherry"];
         let mut cyclic = CyclicIterator::new(vec.clone());
 
-        let result: Vec<_> = cyclic.iter.collect();
+        let result: Vec<_> = cyclic.by_ref().collect();
         assert_eq!(result, vec);
 
-        let result: Vec<_> = cyclic.iter.collect();
+        let result: Vec<_> = cyclic.by_ref().collect();
+        let vec: Vec<&str> = vec![];
+        assert_eq!(vec, result);
+
+        cyclic.reset();
+
+        let result: Vec<_> = cyclic.collect();
         assert_eq!(result, vec!["banana", "cherry", "apple"]);
     }
 }
