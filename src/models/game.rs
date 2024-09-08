@@ -87,6 +87,7 @@ impl Game {
 
             let evt = GameEvent::Ended {
                 winner: first.0.to_string(),
+                lifes: self.get_lifes(),
             };
 
             return self.deal_round_data(Some(evt));
@@ -99,7 +100,17 @@ impl Game {
 
             self.start_new_set();
 
-            let evt = GameEvent::SetEnded(self.get_lifes());
+            let (decks, trump) = self.clone_decks();
+
+            let first = self.current_player();
+
+            let evt = GameEvent::SetEnded {
+                lifes: self.get_lifes(),
+                first,
+                trump,
+                decks,
+            };
+
             return self.deal_round_data(Some(evt));
         }
 
@@ -178,8 +189,8 @@ impl Game {
         Ok(info)
     }
 
-    pub fn current_player(&self) -> Option<&String> {
-        self.cyclic.peek()
+    pub fn current_player(&self) -> String {
+        self.cyclic.peek().expect("Should have a player").clone()
     }
 
     fn get_cycle_stage(&mut self) -> CycleStage {

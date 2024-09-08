@@ -80,7 +80,7 @@ impl Manager {
     }
 
     pub async fn play_turn(&self, card: Card, player_id: String) -> Result<(), LobbyError> {
-        let (players, (turn, (info, event), set_info)) = {
+        let (players, (turn, (info, event))) = {
             let mut manager = self.inner.lobby.lock().await;
 
             let game_id = {
@@ -108,33 +108,21 @@ impl Manager {
                 .deal(turn.clone())
                 .map_err(|e| LobbyError::GameError(GameError::InvalidTurn(e)))?;
 
-            let set_ended = matches!(state.1, Some(GameEvent::SetEnded(_)));
-
-            let set_info = if set_ended {
-                let (decks, trump) = game.clone_decks();
-
-                let first = game
-                    .current_player()
-                    .expect("Should have a next player")
-                    .clone();
-
-                Some((decks, first, trump))
-            } else {
-                None
-            };
-
-            (lobby.get_players_id(), (turn, state, set_info))
+            (lobby.get_players_id(), (turn, state))
         };
 
         let msg = ServerMessage::TurnPlayed { turn };
         self.broadcast_msg(&players, &msg).await;
 
         match event {
-            Some(GameEvent::SetEnded(lifes)) => {
+            Some(GameEvent::SetEnded {
+                lifes,
+                trump,
+                decks,
+                first,
+            }) => {
                 let msg = ServerMessage::SetEnded(lifes);
                 self.broadcast_msg(&players, &msg).await;
-
-                let (decks, first, trump) = set_info.expect("Should contain set info");
 
                 self.init_set(decks, first, trump).await;
             }
@@ -148,8 +136,8 @@ impl Manager {
 
                 self.broadcast_msg(&players, &msg).await;
             }
-            Some(GameEvent::Ended { winner }) => {
-                let msg = ServerMessage::GameEnded { winner };
+            Some(GameEvent::Ended { winner, lifes }) => {
+                let msg = ServerMessage::GameEnded { winner, lifes };
                 self.broadcast_msg(&players, &msg).await;
             }
             None => {
@@ -321,10 +309,7 @@ impl Manager {
 
                 let (decks, trump) = game.clone_decks();
 
-                let first = game
-                    .current_player()
-                    .expect("Should have a next player")
-                    .clone();
+                let first = game.current_player();
 
                 lobby.state = LobbyState::Playing(game);
 

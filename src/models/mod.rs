@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 pub use game::Game;
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
@@ -115,9 +116,17 @@ pub enum LobbyState {
 }
 
 pub enum GameEvent {
-    SetEnded(HashMap<String, usize>),
+    SetEnded {
+        lifes: HashMap<String, usize>,
+        trump: Card,
+        decks: IndexMap<String, Vec<Card>>,
+        first: String,
+    },
     RoundEnded(HashMap<String, usize>),
-    Ended { winner: String },
+    Ended {
+        winner: String,
+        lifes: HashMap<String, usize>,
+    },
 }
 
 pub struct RoundInfo {
