@@ -56,7 +56,7 @@ impl Game {
         (decks, self.trump)
     }
 
-    pub fn deal(&mut self, turn: Turn) -> Result<(RoundInfo, Vec<GameEvent>), TurnError> {
+    pub fn deal(&mut self, turn: Turn) -> Result<(RoundInfo, Option<GameEvent>), TurnError> {
         if self.get_cycle_stage() == CycleStage::Bidding {
             return Err(TurnError::BiddingStageActive);
         }
@@ -80,7 +80,17 @@ impl Game {
 
         //add card to the heap
         self.round_cards.push(turn);
-        let mut events = vec![];
+
+        //finish game
+        if self.decks.len() == 1 {
+            let first = self.decks.first().expect("Should contain one");
+
+            let evt = GameEvent::Ended {
+                winner: first.0.to_string(),
+            };
+
+            return self.deal_round_data(Some(evt));
+        }
 
         // finish round
         if self.round_cards.len() == self.decks.len() {
@@ -90,28 +100,30 @@ impl Game {
                 .next()
                 .expect("Should contain a turn");
 
-            events.push(GameEvent::RoundEnded(self.get_points()));
             self.award_points(winner.clone());
+
+            let evt = GameEvent::RoundEnded(self.get_points());
+            return self.deal_round_data(Some(evt));
         }
 
         //finish set
         if self.decks.iter().all(|(_, p)| p.deck.is_empty()) {
-            // todo send message when player loses a life
             self.remove_lifes();
             self.remove_losers();
 
-            events.push(GameEvent::SetEnded(self.get_lifes()));
-
             self.start_new_set();
+
+            let evt = GameEvent::SetEnded(self.get_lifes());
+            return self.deal_round_data(Some(evt));
         }
 
-        if self.decks.len() == 1 {
-            let first = self.decks.first().expect("Should contain one");
-            events.push(GameEvent::Ended {
-                winner: first.0.to_string(),
-            })
-        }
+        self.deal_round_data(None)
+    }
 
+    fn deal_round_data(
+        &mut self,
+        event: Option<GameEvent>,
+    ) -> Result<(RoundInfo, Option<GameEvent>), TurnError> {
         self.cyclic.next();
 
         let info = match self.cyclic.peek() {
@@ -123,7 +135,7 @@ impl Game {
             }
         };
 
-        Ok((info, events))
+        Ok((info, event))
     }
 
     pub fn bid(&mut self, player_id: &String, bid: usize) -> Result<RoundInfo, BiddingError> {
@@ -164,6 +176,10 @@ impl Game {
         };
 
         Ok(info)
+    }
+
+    pub fn current_player(&self) -> Option<&String> {
+        self.cyclic.peek()
     }
 
     fn get_cycle_stage(&mut self) -> CycleStage {

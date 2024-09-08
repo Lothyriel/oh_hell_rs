@@ -80,7 +80,7 @@ impl Manager {
     }
 
     pub async fn play_turn(&self, card: Card, player_id: String) -> Result<(), LobbyError> {
-        let (players, (turn, (info, events))) = {
+        let (players, (turn, (info, event))) = {
             let mut manager = self.inner.lobby.lock().await;
 
             let game_id = {
@@ -114,26 +114,39 @@ impl Manager {
         let msg = ServerMessage::TurnPlayed { turn };
         self.broadcast_msg(&players, &msg).await;
 
-        for event in events {
-            let msg = match event {
-                GameEvent::SetEnded(lifes) => ServerMessage::SetEnded(lifes),
-                GameEvent::RoundEnded(points) => ServerMessage::RoundEnded(points),
-                GameEvent::Ended { winner } => ServerMessage::GameEnded { winner },
-            };
+        match event {
+            Some(GameEvent::SetEnded(lifes)) => {
+                let msg = ServerMessage::SetEnded(lifes);
+                self.broadcast_msg(&players, &msg).await;
 
-            self.broadcast_msg(&players, &msg).await;
+                let msg = ServerMessage::PlayerBiddingTurn {
+                    player_id: info.next,
+                };
+
+                self.broadcast_msg(&players, &msg).await;
+            }
+            Some(GameEvent::RoundEnded(points)) => {
+                let msg = ServerMessage::RoundEnded(points);
+                self.broadcast_msg(&players, &msg).await;
+
+                let msg = ServerMessage::PlayerTurn {
+                    player_id: info.next,
+                };
+
+                self.broadcast_msg(&players, &msg).await;
+            }
+            Some(GameEvent::Ended { winner }) => {
+                let msg = ServerMessage::GameEnded { winner };
+                self.broadcast_msg(&players, &msg).await;
+            }
+            None => {
+                let msg = ServerMessage::PlayerTurn {
+                    player_id: info.next,
+                };
+
+                self.broadcast_msg(&players, &msg).await;
+            }
         }
-
-        let msg = match info.state {
-            RoundState::Active => ServerMessage::PlayerTurn {
-                player_id: info.next,
-            },
-            RoundState::Ended => ServerMessage::PlayerBiddingTurn {
-                player_id: info.next,
-            },
-        };
-
-        self.broadcast_msg(&players, &msg).await;
 
         Ok(())
     }
