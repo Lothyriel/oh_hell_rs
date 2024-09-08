@@ -386,8 +386,11 @@ type Connection = SplitSink<WebSocket, Message>;
 struct LobbiesManager {
     lobbies: HashMap<String, Lobby>,
     // TODO make sure to remove entries of this guy wherever is needed
-    players_lobby: HashMap<String, String>,
+    players_lobby: HashMap<LobbyId, PlayerId>,
 }
+
+type LobbyId = String;
+type PlayerId = String;
 
 struct Lobby {
     players: IndexMap<String, PlayerStatus>,
