@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use futures::{stream::FusedStream, SinkExt, StreamExt};
     use oh_hell::{
         infra::{
@@ -33,20 +35,57 @@ mod tests {
 
         ready(&mut p1, &mut p2).await;
 
-        let (p1_deck, p2_deck) = decks(&mut p1, &mut p2).await;
+        loop {
+            let (p1_deck, p2_deck) = decks(&mut p1, &mut p2).await;
 
-        bidding(&mut p1, &mut p2, &p1_claims, &p2_claims).await;
+            let players_lifes =
+                play_set(&mut p1, &mut p2, &p1_claims, &p2_claims, &p1_deck, &p2_deck).await;
 
-        play_round(&mut p1, &mut p2, p1_deck, p2_deck).await;
+            if players_lifes.iter().filter(|(_, &lifes)| lifes > 0).count() == 1 {
+                break;
+            }
+        }
+
+        assert_game_msg(&mut p1, validate_game_ended).await;
+    }
+
+    async fn play_set(
+        p1: &mut WebSocket,
+        p2: &mut WebSocket,
+        p1_claims: &UserClaims,
+        p2_claims: &UserClaims,
+        p1_deck: &Deck,
+        p2_deck: &Deck,
+    ) -> HashMap<String, usize> {
+        let rounds_count = p1_deck.len();
+
+        bidding(p1, p2, p1_claims, p2_claims, rounds_count).await;
+
+        for c in 0..rounds_count {
+            play_round(p1, p2, p1_deck, p2_deck, c).await;
+        }
+
+        match assert_game_msg(p1, validate_set_ended).await {
+            ServerMessage::SetEnded(lifes) => lifes,
+            _ => panic!("Expected SetEnded"),
+        }
     }
 
     type Deck = Vec<Card>;
 
-    async fn play_round(p1: &mut WebSocket, p2: &mut WebSocket, p1_deck: Deck, p2_deck: Deck) {
+    async fn play_round(
+        p1: &mut WebSocket,
+        p2: &mut WebSocket,
+        p1_deck: &Deck,
+        p2_deck: &Deck,
+        card: usize,
+    ) {
         assert_game_msg(p1, validate_player_turn).await;
         assert_game_msg(p2, validate_player_turn).await;
 
-        let msg = ClientGameMessage::PlayTurn { card: p1_deck[0] };
+        let msg = ClientGameMessage::PlayTurn {
+            card: p1_deck[card],
+        };
         send_msg(p1, msg).await;
 
         assert_game_msg(p1, validate_turn_played).await;
@@ -55,7 +94,9 @@ mod tests {
         assert_game_msg(p1, validate_player_turn).await;
         assert_game_msg(p2, validate_player_turn).await;
 
-        let msg = ClientGameMessage::PlayTurn { card: p2_deck[0] };
+        let msg = ClientGameMessage::PlayTurn {
+            card: p2_deck[card],
+        };
         send_msg(p2, msg).await;
 
         assert_game_msg(p1, validate_turn_played).await;
@@ -70,8 +111,8 @@ mod tests {
         p2: &mut WebSocket,
         p1_claims: &UserClaims,
         p2_claims: &UserClaims,
+        bid: usize,
     ) {
-        let bid = 0;
         let msg = ClientGameMessage::PutBid { bid };
 
         assert_game_msg(p1, get_bidding_turn_predicate(p1_claims.id())).await;
@@ -128,6 +169,14 @@ mod tests {
         assert_game_msg(p1, validate_player_status_change).await;
         assert_game_msg(p2, validate_player_status_change).await;
         assert_game_msg(p2, validate_player_status_change).await;
+    }
+
+    fn validate_game_ended(m: &ServerMessage) -> bool {
+        matches!(m, ServerMessage::GameEnded { winner: _ })
+    }
+
+    fn validate_set_ended(m: &ServerMessage) -> bool {
+        matches!(m, ServerMessage::SetEnded(_))
     }
 
     fn validate_round_ended(m: &ServerMessage) -> bool {
@@ -215,7 +264,7 @@ mod tests {
 
         let msg: ServerMessage = match msg {
             Message::Text(t) => serde_json::from_str(&t).unwrap(),
-            _ => panic!("Wrong format"),
+            m => panic!("Error: {m}"),
         };
 
         msg
