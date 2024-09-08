@@ -201,6 +201,7 @@ impl Manager {
         manager
             .lobbies
             .iter()
+            .filter(|(_, lobby)| matches!(lobby.state, LobbyState::NotStarted(_)))
             .map(|(id, lobby)| GetLobbyDto {
                 id: id.clone(),
                 player_count: lobby.players.len(),
