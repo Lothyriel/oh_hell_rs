@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     infra::{self, auth::UserClaims, GetLobbyDto, ServerMessage},
-    models::{BiddingError, Card, Game, GameError, GameState, RoundState, Turn, TurnError},
+    models::{BiddingError, Card, Game, GameError, LobbyState, RoundState, Turn, TurnError},
 };
 
 use super::repositories::{auth::AuthRepository, game::GamesRepository};
@@ -117,7 +117,7 @@ impl Manager {
     }
 
     pub async fn bid(&self, bid: usize, player_id: String) -> Result<(), LobbyError> {
-        let (players, bidding) = {
+        let (players, info) = {
             let mut manager = self.inner.lobby.lock().await;
 
             let lobby_id = {
@@ -145,9 +145,13 @@ impl Manager {
         let msg = ServerMessage::PlayerBidded { player_id, bid };
         self.broadcast_msg(&players, &msg).await;
 
-        let msg = match bidding {
-            RoundState::Active(player_id) => ServerMessage::PlayerBiddingTurn { player_id },
-            RoundState::Ended(player_id) => ServerMessage::PlayerTurn { player_id },
+        let msg = match info.state {
+            RoundState::Active => ServerMessage::PlayerBiddingTurn {
+                player_id: info.next,
+            },
+            RoundState::Ended => ServerMessage::PlayerTurn {
+                player_id: info.next,
+            },
         };
 
         self.broadcast_msg(&players, &msg).await;
@@ -247,10 +251,9 @@ impl Manager {
                 .get_mut(&lobby_id)
                 .ok_or(LobbyError::InvalidLobby)?;
 
-            let players_ready = match lobby.game.borrow_mut() {
-                GameState::NotStarted(p) => p,
-                GameState::Running(_) => return Err(LobbyError::GameAlreadyStarted),
-                GameState::Ended { winner: _, game: _ } => return Err(LobbyError::GameNotStarted),
+            let players_ready = match lobby.state.borrow_mut() {
+                LobbyState::NotStarted(p) => p,
+                LobbyState::Playing(_) => return Err(LobbyError::GameAlreadyStarted),
             };
 
             players_ready.insert(player_id.clone());
@@ -264,7 +267,7 @@ impl Manager {
 
                 let decks = game.clone_decks();
 
-                lobby.game = GameState::Running(game);
+                lobby.state = LobbyState::Playing(game);
 
                 Some(decks)
             } else {
@@ -380,7 +383,7 @@ struct LobbiesManager {
 
 struct Lobby {
     players: IndexMap<String, PlayerStatus>,
-    game: GameState,
+    state: LobbyState,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -401,7 +404,7 @@ impl Lobby {
     fn new() -> Self {
         Self {
             players: IndexMap::new(),
-            game: GameState::NotStarted(HashSet::new()),
+            state: LobbyState::NotStarted(HashSet::new()),
         }
     }
 
@@ -414,10 +417,9 @@ impl Lobby {
     }
 
     fn get_game(&mut self) -> Result<&mut Game, LobbyError> {
-        match self.game.borrow_mut() {
-            GameState::NotStarted(_) => Err(LobbyError::GameNotStarted),
-            GameState::Running(g) => Ok(g),
-            GameState::Ended { winner: _, game } => Ok(game),
+        match self.state.borrow_mut() {
+            LobbyState::NotStarted(_) => Err(LobbyError::GameNotStarted),
+            LobbyState::Playing(g) => Ok(g),
         }
     }
 }

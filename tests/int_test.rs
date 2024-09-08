@@ -142,7 +142,7 @@ mod tests {
     async fn connect_ws(token: String) -> WebSocket {
         let (mut stream, _) = connect_async("ws://localhost:3000/game").await.unwrap();
 
-        let msg = ClientMessage::Auth(token);
+        let msg = ClientMessage::Auth { token };
 
         let json = serde_json::to_string(&msg).unwrap();
 
