@@ -33,20 +33,39 @@ mod tests {
 
         ready(&mut p1, &mut p2).await;
 
+        let mut cards_count = 1;
+
         loop {
-            let (p1_deck, p2_deck) = decks(&mut p1, &mut p2).await;
+            let (p1_deck, p2_deck) = decks(&mut p1, &mut p2, cards_count).await;
+
+            cards_count += 1;
 
             play_set(&mut p1, &mut p2, &p1_claims, &p2_claims, &p1_deck, &p2_deck).await;
 
-            match recv_msg(&mut p1).await {
-                ServerMessage::SetEnded(_) => {}
-                ServerMessage::GameEnded { winner, lifes } => {
-                    if lifes.iter().filter(|(_, &lifes)| lifes > 0).count() == 1 {
-                        break;
-                    }
-                }
-                _ => panic!("Expected Set or Game end"),
+            if assert_game_or_set_ended(&mut p1).await & assert_game_or_set_ended(&mut p2).await {
+                break;
             }
+        }
+    }
+
+    async fn assert_game_or_set_ended(socket: &mut WebSocket) -> bool {
+        match recv_msg(socket).await {
+            ServerMessage::SetEnded(lifes) => {
+                println!("Asserted game msg {:?}", ServerMessage::SetEnded(lifes));
+                false
+            }
+            ServerMessage::GameEnded { winner, lifes } => {
+                if lifes.iter().filter(|(_, &lifes)| lifes > 0).count() == 1 {
+                    let msg = ServerMessage::GameEnded { lifes, winner };
+
+                    println!("Asserted game msg {:?}", msg);
+
+                    true
+                } else {
+                    panic!("The game ended with more than 1 winner")
+                }
+            }
+            _ => panic!("Expected Set or Game end"),
         }
     }
 
@@ -126,14 +145,14 @@ mod tests {
         assert_game_msg(p2, get_player_bidded_predicate(p2_claims.id(), bid)).await;
     }
 
-    async fn decks(p1: &mut WebSocket, p2: &mut WebSocket) -> (Deck, Deck) {
+    async fn decks(p1: &mut WebSocket, p2: &mut WebSocket, cards_count: usize) -> (Deck, Deck) {
         assert_game_msg(p1, validate_set_start).await;
         assert_game_msg(p2, validate_set_start).await;
 
         let p1_deck = get_deck(p1).await;
         let p2_deck = get_deck(p2).await;
-        assert!(p1_deck.len() == 1);
-        assert!(p2_deck.len() == 1);
+        assert!(p1_deck.len() == cards_count);
+        assert!(p2_deck.len() == cards_count);
 
         (p1_deck, p2_deck)
     }
