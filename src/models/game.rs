@@ -92,6 +92,17 @@ impl Game {
             return self.deal_round_data(Some(evt));
         }
 
+        //finish set
+        if self.decks.iter().all(|(_, p)| p.deck.is_empty()) {
+            self.remove_lifes();
+            self.remove_losers();
+
+            self.start_new_set();
+
+            let evt = GameEvent::SetEnded(self.get_lifes());
+            return self.deal_round_data(Some(evt));
+        }
+
         // finish round
         if self.round_cards.len() == self.decks.len() {
             let winner = self
@@ -103,17 +114,6 @@ impl Game {
             self.award_points(winner.clone());
 
             let evt = GameEvent::RoundEnded(self.get_points());
-            return self.deal_round_data(Some(evt));
-        }
-
-        //finish set
-        if self.decks.iter().all(|(_, p)| p.deck.is_empty()) {
-            self.remove_lifes();
-            self.remove_losers();
-
-            self.start_new_set();
-
-            let evt = GameEvent::SetEnded(self.get_lifes());
             return self.deal_round_data(Some(evt));
         }
 
