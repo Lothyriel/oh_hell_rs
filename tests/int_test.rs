@@ -61,8 +61,8 @@ mod tests {
 
         bidding(p1, p2, p1_claims, p2_claims, rounds_count).await;
 
-        for c in 0..rounds_count {
-            play_round(p1, p2, p1_deck, p2_deck, c).await;
+        for _ in 0..rounds_count {
+            play_round(p1, p2, p1_deck, p2_deck).await;
         }
 
         match assert_game_msg(p1, validate_set_ended).await {
@@ -73,19 +73,11 @@ mod tests {
 
     type Deck = Vec<Card>;
 
-    async fn play_round(
-        p1: &mut WebSocket,
-        p2: &mut WebSocket,
-        p1_deck: &Deck,
-        p2_deck: &Deck,
-        card: usize,
-    ) {
+    async fn play_round(p1: &mut WebSocket, p2: &mut WebSocket, p1_deck: &Deck, p2_deck: &Deck) {
         assert_game_msg(p1, validate_player_turn).await;
         assert_game_msg(p2, validate_player_turn).await;
 
-        let msg = ClientGameMessage::PlayTurn {
-            card: p1_deck[card],
-        };
+        let msg = ClientGameMessage::PlayTurn { card: p1_deck[0] };
         send_msg(p1, msg).await;
 
         assert_game_msg(p1, validate_turn_played).await;
@@ -94,9 +86,7 @@ mod tests {
         assert_game_msg(p1, validate_player_turn).await;
         assert_game_msg(p2, validate_player_turn).await;
 
-        let msg = ClientGameMessage::PlayTurn {
-            card: p2_deck[card],
-        };
+        let msg = ClientGameMessage::PlayTurn { card: p2_deck[0] };
         send_msg(p2, msg).await;
 
         assert_game_msg(p1, validate_turn_played).await;
