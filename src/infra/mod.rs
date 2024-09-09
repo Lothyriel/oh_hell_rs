@@ -51,15 +51,33 @@ type PlayerPoints = HashMap<String, usize>;
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type", content = "data")]
 pub enum ServerMessage {
-    PlayerTurn { player_id: String },
-    TurnPlayed { turn: Turn },
-    PlayerBidded { player_id: String, bid: usize },
-    PlayerBiddingTurn { player_id: String },
-    PlayerStatusChange { player_id: String, ready: bool },
+    PlayerTurn {
+        player_id: String,
+    },
+    TurnPlayed {
+        turn: Turn,
+    },
+    PlayerBidded {
+        player_id: String,
+        bid: usize,
+    },
+    PlayerBiddingTurn {
+        player_id: String,
+        possible_bids: Vec<usize>,
+    },
+    PlayerStatusChange {
+        player_id: String,
+        ready: bool,
+    },
     RoundEnded(PlayerPoints),
     PlayerDeck(Vec<Card>),
-    SetStart { trump: Card },
+    SetStart {
+        trump: Card,
+    },
     SetEnded(PlayerPoints),
-    GameEnded { winner: String, lifes: PlayerPoints },
+    GameEnded {
+        winner: String,
+        lifes: PlayerPoints,
+    },
     PlayerJoined(UserClaims),
 }

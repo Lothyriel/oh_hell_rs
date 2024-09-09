@@ -120,11 +120,12 @@ impl Manager {
                 trump,
                 decks,
                 first,
+                possible,
             }) => {
                 let msg = ServerMessage::SetEnded(lifes);
                 self.broadcast_msg(&players, &msg).await;
 
-                self.init_set(decks, first, trump).await;
+                self.init_set(decks, first, trump, possible).await;
             }
             Some(GameEvent::RoundEnded(points)) => {
                 let msg = ServerMessage::RoundEnded(points);
@@ -184,6 +185,7 @@ impl Manager {
         let msg = match info.state {
             RoundState::Active => ServerMessage::PlayerBiddingTurn {
                 player_id: info.next,
+                possible_bids: info.possible_bids,
             },
             RoundState::Ended => ServerMessage::PlayerTurn {
                 player_id: info.next,
@@ -312,9 +314,11 @@ impl Manager {
 
                 let first = game.current_player();
 
+                let possible = game.get_possible_bids();
+
                 lobby.state = LobbyState::Playing(game);
 
-                Some((decks, first, trump))
+                Some((decks, first, trump, possible))
             } else {
                 None
             };
@@ -325,14 +329,20 @@ impl Manager {
         let msg = ServerMessage::PlayerStatusChange { player_id, ready };
         self.broadcast_msg(&players, &msg).await;
 
-        if let Some((decks, first, trump)) = set_info {
-            self.init_set(decks, first, trump).await;
+        if let Some((decks, first, trump, possible_bids)) = set_info {
+            self.init_set(decks, first, trump, possible_bids).await;
         }
 
         Ok(())
     }
 
-    async fn init_set(&self, decks: IndexMap<String, Vec<Card>>, first: String, trump: Card) {
+    async fn init_set(
+        &self,
+        decks: IndexMap<String, Vec<Card>>,
+        first: String,
+        trump: Card,
+        possible_bids: Vec<usize>,
+    ) {
         let players: Vec<_> = decks.keys().cloned().collect();
 
         let msg = ServerMessage::SetStart { trump };
@@ -346,7 +356,11 @@ impl Manager {
             }
         }
 
-        let msg = ServerMessage::PlayerBiddingTurn { player_id: first };
+        let msg = ServerMessage::PlayerBiddingTurn {
+            player_id: first,
+            possible_bids,
+        };
+
         self.broadcast_msg(&players, &msg).await;
     }
 

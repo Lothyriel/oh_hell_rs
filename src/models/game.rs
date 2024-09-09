@@ -106,6 +106,7 @@ impl Game {
 
             let evt = GameEvent::SetEnded {
                 lifes: self.get_lifes(),
+                possible: self.get_possible_bids(),
                 first,
                 trump,
                 decks,
@@ -137,12 +138,13 @@ impl Game {
     ) -> Result<(RoundInfo, Option<GameEvent>), TurnError> {
         self.cyclic.next();
 
+        let possible = self.get_possible_bids();
+
         let info = match self.cyclic.peek() {
-            Some(n) => RoundInfo::new(n.clone(), RoundState::Active),
+            Some(n) => RoundInfo::new(n.clone(), RoundState::Active, possible),
             None => {
                 let next = self.cyclic.advance();
-
-                RoundInfo::new(next, RoundState::Ended)
+                RoundInfo::new(next, RoundState::Ended, possible)
             }
         };
 
@@ -154,7 +156,7 @@ impl Game {
             return Err(BiddingError::DealingStageActive);
         }
 
-        if bid > self.cards_count {
+        if bid > self.cards_count || !self.valid_bid(bid) {
             return Err(BiddingError::BidOutOfRange);
         }
 
@@ -177,20 +179,43 @@ impl Game {
 
         self.cyclic.next();
 
+        let possible = self.get_possible_bids();
+
         let info = match self.cyclic.peek() {
-            Some(n) => RoundInfo::new(n.clone(), RoundState::Active),
+            Some(n) => RoundInfo::new(n.clone(), RoundState::Active, possible),
             None => {
                 let next = self.cyclic.reset();
 
-                RoundInfo::new(next, RoundState::Ended)
+                RoundInfo::new(next, RoundState::Ended, possible)
             }
         };
 
         Ok(info)
     }
 
+    fn valid_bid(&self, bid: usize) -> bool {
+        let current_bidding: usize = self
+            .decks
+            .iter()
+            .map(|(_, p)| p.bid.unwrap_or_default())
+            .sum();
+
+        self.cyclic.peek_next().is_some() || bid + current_bidding != self.cards_count
+    }
+
     pub fn current_player(&self) -> String {
         self.cyclic.peek().expect("Should have a player").clone()
+    }
+
+    pub fn get_possible_bids(&self) -> Vec<usize> {
+        let last = self.cyclic.peek_next().is_none();
+        let n = self.decks.len();
+
+        if last {
+            (0..n).filter(|&i| self.valid_bid(i)).collect()
+        } else {
+            (0..n).collect()
+        }
     }
 
     fn get_cycle_stage(&mut self) -> CycleStage {
@@ -307,14 +332,7 @@ mod tests {
         let player2 = "P2".to_string();
 
         let mut game = Game::new(vec![player1.clone(), player2.clone()]).unwrap();
-
         assert!(game.round_cards.is_empty());
-
-        let first_played_card = game.decks[&player1].deck[0];
-        let first_turn = Turn {
-            player_id: player1.clone(),
-            card: first_played_card,
-        };
 
         let info = game.bid(&player1, 1).unwrap();
         assert_eq!(info.next, player2);
@@ -323,6 +341,12 @@ mod tests {
         let info = game.bid(&player2, 1).unwrap();
         assert_eq!(info.next, player1);
         assert_eq!(info.state, RoundState::Ended);
+
+        let first_played_card = game.decks[&player1].deck[0];
+        let first_turn = Turn {
+            player_id: player1,
+            card: first_played_card,
+        };
 
         game.deal(first_turn).unwrap();
 
@@ -338,6 +362,24 @@ mod tests {
         game.deal(second_turn).unwrap();
 
         assert!(game.round_cards.len() == 2);
+    }
+
+    #[test]
+    fn test_invalid_bid() {
+        let player1 = "P1".to_string();
+        let player2 = "P2".to_string();
+
+        let mut game = Game::new(vec![player1.clone(), player2.clone()]).unwrap();
+
+        let info = game.bid(&player1, 1).unwrap();
+        assert_eq!(info.next, player2);
+        assert_eq!(info.state, RoundState::Active);
+
+        let result = game.bid(&player2, 0);
+        assert_eq!(result, Err(BiddingError::BidOutOfRange));
+
+        let possible = game.get_possible_bids();
+        assert_eq!(possible, vec![1]);
     }
 
     #[test]

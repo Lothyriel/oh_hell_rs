@@ -121,6 +121,7 @@ pub enum GameEvent {
         trump: Card,
         decks: IndexMap<String, Vec<Card>>,
         first: String,
+        possible: Vec<usize>,
     },
     RoundEnded(HashMap<String, usize>),
     Ended {
@@ -129,24 +130,30 @@ pub enum GameEvent {
     },
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct RoundInfo {
     pub next: String,
     pub state: RoundState,
+    pub possible_bids: Vec<usize>,
 }
 
 impl RoundInfo {
-    fn new(next: String, state: RoundState) -> Self {
-        Self { next, state }
+    fn new(next: String, state: RoundState, possible_bids: Vec<usize>) -> Self {
+        Self {
+            next,
+            state,
+            possible_bids,
+        }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum RoundState {
     Active,
     Ended,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DealingMode {
     Increasing,
     Decreasing,
@@ -172,7 +179,7 @@ pub enum TurnError {
     InvalidPlayer,
 }
 
-#[derive(Debug, thiserror::Error, Display)]
+#[derive(Debug, thiserror::Error, Display, PartialEq, Eq)]
 pub enum BiddingError {
     InvalidPlayer,
     AlreadyBidded,

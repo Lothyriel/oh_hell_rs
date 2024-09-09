@@ -21,8 +21,6 @@ mod tests {
 
         let mut client = reqwest::Client::new();
 
-        // TODO make this test work for 2-10 players
-
         let tokens = get_players(&mut client, 2).await;
 
         let mut connections = join_lobby(&mut client, &tokens).await;
@@ -44,7 +42,10 @@ mod tests {
                     return;
                 }
             }
+
+            connections.rotate_right(1);
         }
+
     }
 
     async fn get_players(client: &mut Client, count: usize) -> Vec<String> {
@@ -75,7 +76,7 @@ mod tests {
                     panic!("The game ended with more than 1 winner")
                 }
             }
-            _ => panic!("Expected Set or Game end"),
+            a => panic!("Expected Set or Game end | {a:?}"),
         }
     }
 
@@ -196,7 +197,13 @@ mod tests {
     }
 
     fn validate_bidding_turn(m: &ServerMessage) -> bool {
-        matches!(m, ServerMessage::PlayerBiddingTurn { player_id: _ })
+        matches!(
+            m,
+            ServerMessage::PlayerBiddingTurn {
+                player_id: _,
+                possible_bids: _
+            }
+        )
     }
 
     fn validate_player_bidded(m: &ServerMessage) -> bool {

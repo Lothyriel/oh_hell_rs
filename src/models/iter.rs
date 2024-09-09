@@ -39,6 +39,14 @@ impl<T: Clone> CyclicIterator<T> {
             None
         }
     }
+
+    pub fn peek_next(&self) -> Option<&T> {
+        if self.iteration_count + 1 < self.items.len() {
+            self.items.get((self.current_index + 1) % self.items.len())
+        } else {
+            None
+        }
+    }
 }
 
 impl<T: Clone> Iterator for CyclicIterator<T> {
