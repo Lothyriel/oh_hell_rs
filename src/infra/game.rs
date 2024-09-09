@@ -27,18 +27,14 @@ pub async fn ws_handler(
     tracing::info!(">>>> {who} connected");
 
     ws.on_upgrade(move |socket| async move {
-        match handle_connection(socket, who, manager).await {
+        match handle_connection(socket, manager).await {
             Ok(_) => tracing::warn!(">>>> {who} closed normally"),
-            Err(e) => tracing::error!(">>>> exited because: {}", e),
+            Err(e) => tracing::error!(">>>> {who} closed from error: {e}"),
         }
     })
 }
 
-async fn handle_connection(
-    socket: WebSocket,
-    who: SocketAddr,
-    manager: Manager,
-) -> Result<(), ManagerError> {
+async fn handle_connection(socket: WebSocket, manager: Manager) -> Result<(), ManagerError> {
     let (sender, mut receiver) = socket.split();
 
     let auth = get_auth(&mut receiver).await?;
@@ -48,10 +44,10 @@ async fn handle_connection(
     tokio::spawn(async move {
         while let Some(Ok(message)) = receiver.next().await {
             let id = auth.id();
-            match process_msg(message, who, manager.clone(), id.clone()).await {
+            match process_msg(message, manager.clone(), id.clone()).await {
                 Ok(_) => {}
                 Err(error) => {
-                    tracing::error!("{error} | {who} closing connection");
+                    tracing::error!("{id} closing connection: {error}");
                     manager.send_disconnect(&id, error).await;
                     break;
                 }
@@ -89,17 +85,15 @@ async fn get_auth(receiver: &mut SplitStream<WebSocket>) -> Result<UserClaims, M
 
 async fn process_msg(
     msg: Message,
-    who: SocketAddr,
     manager: Manager,
     player_id: String,
 ) -> Result<(), ManagerError> {
     match msg {
-        Message::Text(message) => {
-            tracing::debug!(">>>> {who} sent text message: {message:?}");
+        Message::Text(msg) => {
+            let msg = serde_json::from_str(&msg)?;
+            tracing::debug!("Received from {player_id}: {msg:?}");
 
-            let message = serde_json::from_str(&message)?;
-
-            match message {
+            match msg {
                 ClientMessage::Game(g) => handle_game_msg(g, manager, player_id).await,
                 ClientMessage::Auth { token: a } => {
                     tracing::error!("Unexpected auth message {a}");
@@ -111,10 +105,10 @@ async fn process_msg(
         }
         Message::Close(c) => {
             let reason = c
-                .map(|c| format!(" | reason: {} {}", c.code, c.reason))
-                .unwrap_or_default();
+                .map(|c| format!("code: {} | {}", c.code, c.reason))
+                .unwrap_or("empty".to_string());
 
-            tracing::warn!(">>>> {who} sent close message{}", reason);
+            tracing::warn!("{player_id} sent close message, reason: {}", reason);
 
             Err(ManagerError::PlayerDisconnected(reason))
         }
@@ -123,11 +117,11 @@ async fn process_msg(
 }
 
 async fn handle_game_msg(
-    message: ClientGameMessage,
+    msg: ClientGameMessage,
     manager: Manager,
     player_id: String,
 ) -> Result<(), ManagerError> {
-    let result = match message {
+    let result = match msg {
         ClientGameMessage::PlayTurn { card } => manager.play_turn(card, player_id).await,
         ClientGameMessage::PutBid { bid } => manager.bid(bid, player_id).await,
         ClientGameMessage::PlayerStatusChange { ready } => {

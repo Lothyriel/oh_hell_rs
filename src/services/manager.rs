@@ -223,20 +223,12 @@ impl Manager {
         Ok(())
     }
 
-    pub async fn unicast_msg(
-        &self,
-        player_id: &str,
-        message: &ServerMessage,
-    ) -> Result<(), ManagerError> {
+    pub async fn unicast_msg(&self, player_id: &str, message: &ServerMessage) {
         let mut manager = self.inner.connections.lock().await;
 
-        let connection = manager
-            .get_mut(player_id)
-            .ok_or(ManagerError::PlayerDisconnected(
-                "Player not in the stored connections".to_string(),
-            ))?;
-
-        send_msg(message, connection).await
+        if let Some(connection) = manager.get_mut(player_id) {
+            send_msg(message, player_id, connection).await
+        }
     }
 
     pub async fn send_disconnect(&self, player_id: &str, reason: ManagerError) {
@@ -269,7 +261,7 @@ impl Manager {
             .await;
 
         if let Err(e) = send_close {
-            tracing::error!("{e} | while trying to send error message")
+            tracing::error!("Failed to send close message: {e}")
         }
     }
 
@@ -351,9 +343,7 @@ impl Manager {
         for (p, deck) in decks {
             let msg = ServerMessage::PlayerDeck(deck);
 
-            if let Err(e) = self.unicast_msg(&p, &msg).await {
-                tracing::error!("Error while unicasting: {p} | {e}");
-            }
+            self.unicast_msg(&p, &msg).await;
         }
 
         let msg = ServerMessage::PlayerBiddingTurn {
@@ -369,24 +359,25 @@ impl Manager {
             let mut connections = self.inner.connections.lock().await;
 
             if let Some(c) = connections.get_mut(p) {
-                if let Err(e) = send_msg(msg, c).await {
-                    tracing::error!("Error broadcasting to: {p} | {e}");
-                }
+                send_msg(msg, p, c).await;
             }
         }
     }
 }
 
-async fn send_msg(
-    message: &ServerMessage,
-    connection: &mut Connection,
-) -> Result<(), ManagerError> {
-    let message = serde_json::to_string(message)?;
+async fn send_msg(msg: &ServerMessage, player: &str, connection: &mut Connection) {
+    let msg = serde_json::to_string(msg).expect("Should be valid json");
 
-    connection
-        .send(Message::Text(message))
+    tracing::info!("Sending to {player}: {msg}");
+
+    let send = connection
+        .send(Message::Text(msg))
         .await
-        .map_err(|e| ManagerError::PlayerDisconnected(e.to_string()))
+        .map_err(|e| ManagerError::PlayerDisconnected(e.to_string()));
+
+    if let Err(e) = send {
+        tracing::error!("Error sending msg to: {player} | {e}");
+    }
 }
 
 #[derive(thiserror::Error, Debug)]

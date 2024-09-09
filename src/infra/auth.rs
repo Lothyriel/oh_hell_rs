@@ -99,14 +99,8 @@ async fn generate_token(
         exp: 10000000000,
     };
 
-    let insert = manager
-        .auth_repo
-        .insert_login(&LoginDto::new(claims.id.to_string(), who.to_string()))
-        .await;
-
-    if let Err(e) = insert {
-        tracing::error!("Error while saving login info | {e}")
-    }
+    let dto = LoginDto::new(claims.id.to_string(), who.to_string());
+    tokio::spawn(save_login(manager, dto));
 
     let token = jsonwebtoken::encode(
         &Header::default(),
@@ -116,6 +110,14 @@ async fn generate_token(
     .expect("Should encode JWT");
 
     Json(TokenResponse { token })
+}
+
+async fn save_login(manager: Manager, dto: LoginDto) {
+    let insert = manager.auth_repo.insert_login(&dto).await;
+
+    if let Err(e) = insert {
+        tracing::error!("Error while saving login info | {e}")
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

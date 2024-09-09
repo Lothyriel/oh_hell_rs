@@ -19,11 +19,7 @@ pub async fn start_app() {
         .with(tracing_subscriber::EnvFilter::from(
             "debug,hyper=off,rustls=error,tungstenite=error",
         ))
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_file(true)
-                .with_line_number(true),
-        )
+        .with(tracing_subscriber::fmt::layer().with_line_number(true))
         .init();
 
     dotenv::dotenv().ok();

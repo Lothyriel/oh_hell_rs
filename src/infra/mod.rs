@@ -19,14 +19,14 @@ pub async fn fallback_handler() -> (StatusCode, &'static str) {
 const NOT_FOUND_RESPONSE: (StatusCode, &str) =
     (StatusCode::NOT_FOUND, "this resource doesn't exist");
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
 #[serde(tag = "type", content = "data")]
 pub enum ClientMessage {
     Game(ClientGameMessage),
     Auth { token: String },
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Clone, Copy)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, Copy, Debug)]
 #[serde(tag = "type", content = "data")]
 pub enum ClientGameMessage {
     PlayTurn { card: Card },
