@@ -80,7 +80,7 @@ impl Manager {
     }
 
     pub async fn play_turn(&self, card: Card, player_id: String) -> Result<(), LobbyError> {
-        let (players, (turn, (info, event))) = {
+        let (players, (pile, (info, event))) = {
             let mut manager = self.inner.lobby.lock().await;
 
             let game_id = {
@@ -105,13 +105,15 @@ impl Manager {
             let turn = Turn { player_id, card };
 
             let state = game
-                .deal(turn.clone())
+                .deal(turn)
                 .map_err(|e| LobbyError::GameError(GameError::InvalidTurn(e)))?;
 
-            (lobby.get_players_id(), (turn, state))
+            let pile = game.get_pile();
+
+            (lobby.get_players_id(), (pile, state))
         };
 
-        let msg = ServerMessage::TurnPlayed { turn };
+        let msg = ServerMessage::TurnPlayed { pile };
         self.broadcast_msg(&players, &msg).await;
 
         match event {

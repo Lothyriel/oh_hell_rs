@@ -55,7 +55,7 @@ pub enum ServerMessage {
         player_id: String,
     },
     TurnPlayed {
-        turn: Turn,
+        pile: Vec<Turn>,
     },
     PlayerBidded {
         player_id: String,

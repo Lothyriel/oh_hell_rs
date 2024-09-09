@@ -218,6 +218,10 @@ impl Game {
         }
     }
 
+    pub fn get_pile(&self) -> Vec<Turn> {
+        self.round_cards.iter().cloned().collect()
+    }
+
     fn get_cycle_stage(&mut self) -> CycleStage {
         match self.decks.values().any(|p| p.bid.is_none()) {
             true => CycleStage::Bidding,

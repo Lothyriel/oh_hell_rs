@@ -189,7 +189,7 @@ mod tests {
     }
 
     fn validate_turn_played(m: &ServerMessage) -> bool {
-        matches!(m, ServerMessage::TurnPlayed { turn: _ })
+        matches!(m, ServerMessage::TurnPlayed { pile: _ })
     }
 
     fn validate_player_turn(m: &ServerMessage) -> bool {
