@@ -61,6 +61,11 @@ impl Manager {
                     .get_mut(&lobby_id)
                     .ok_or(LobbyError::InvalidLobby)?;
 
+                match lobby.state {
+                    LobbyState::NotStarted(_) => {}
+                    LobbyState::Playing(_) => return Err(LobbyError::GameAlreadyStarted),
+                }
+
                 let status = PlayerStatus::new(user_claims.clone());
 
                 lobby.players.insert(user_claims.id(), status);
