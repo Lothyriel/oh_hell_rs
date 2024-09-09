@@ -11,7 +11,7 @@ use super::{
 
 #[derive(Debug)]
 pub struct Game {
-    decks: IndexMap<String, Player>,
+    players: IndexMap<String, Player>,
     round_cards: BinaryHeap<Turn>,
     dealing_mode: DealingMode,
     cyclic: CyclicIterator<String>,
@@ -29,26 +29,28 @@ const MAX_AVAILABLE_CARDS: usize = 40 - 1;
 const MAX_PLAYER_COUNT: usize = 10;
 
 impl Game {
-    pub fn new(players: Vec<String>) -> Result<Self, GameError> {
-        validate_game(&players)?;
+    pub fn new(player_names: Vec<String>) -> Result<Self, GameError> {
+        validate_game(&player_names)?;
 
         let initial_cards_count = 1;
 
-        let (decks, trump) = Self::get_decks(&players, initial_cards_count);
+        let (players, trump) = Self::init_players(&player_names, initial_cards_count);
 
         Ok(Self {
-            decks,
+            players,
             round_cards: BinaryHeap::new(),
             dealing_mode: DealingMode::Increasing,
             cards_count: initial_cards_count,
-            cyclic: CyclicIterator::new(players),
+            // TODO we need to reset this guy when we remove someone from
+            // the game (player lost all lifes)
+            cyclic: CyclicIterator::new(player_names),
             trump,
         })
     }
 
     pub fn clone_decks(&self) -> (IndexMap<String, Vec<Card>>, Card) {
         let decks = self
-            .decks
+            .players
             .iter()
             .map(|(id, p)| (id.clone(), p.deck.clone()))
             .collect();
@@ -62,7 +64,7 @@ impl Game {
         }
 
         let player = self
-            .decks
+            .players
             .get_mut(&turn.player_id)
             .ok_or(TurnError::InvalidPlayer)?;
 
@@ -82,8 +84,12 @@ impl Game {
         self.round_cards.push(turn);
 
         //finish game
-        if self.decks.len() == 1 {
-            let first = self.decks.first().expect("Should contain one");
+        if self.players.len() == 1 {
+            self.award_points();
+            self.remove_lifes();
+            self.remove_losers();
+
+            let first = self.players.first().expect("Should contain one");
 
             let evt = GameEvent::Ended {
                 winner: first.0.to_string(),
@@ -94,7 +100,8 @@ impl Game {
         }
 
         //finish set
-        if self.decks.iter().all(|(_, p)| p.deck.is_empty()) {
+        if self.players.iter().all(|(_, p)| p.deck.is_empty()) {
+            self.award_points();
             self.remove_lifes();
             self.remove_losers();
 
@@ -116,14 +123,8 @@ impl Game {
         }
 
         // finish round
-        if self.round_cards.len() == self.decks.len() {
-            let winner = self
-                .round_cards
-                .iter()
-                .next()
-                .expect("Should contain a turn");
-
-            self.award_points(winner.clone());
+        if self.round_cards.len() == self.players.len() {
+            self.award_points();
 
             let evt = GameEvent::RoundEnded(self.get_points());
             return self.deal_round_data(Some(evt));
@@ -161,7 +162,7 @@ impl Game {
         }
 
         let player = self
-            .decks
+            .players
             .get_mut(player_id)
             .ok_or(BiddingError::InvalidPlayer)?;
 
@@ -195,7 +196,7 @@ impl Game {
 
     fn valid_bid(&self, bid: usize) -> bool {
         let current_bidding: usize = self
-            .decks
+            .players
             .iter()
             .map(|(_, p)| p.bid.unwrap_or_default())
             .sum();
@@ -209,7 +210,7 @@ impl Game {
 
     pub fn get_possible_bids(&self) -> Vec<usize> {
         let last = self.cyclic.peek_next().is_none();
-        let n = self.decks.len();
+        let n = self.players.len();
 
         if last {
             (0..n).filter(|&i| self.valid_bid(i)).collect()
@@ -223,7 +224,7 @@ impl Game {
     }
 
     fn get_cycle_stage(&mut self) -> CycleStage {
-        match self.decks.values().any(|p| p.bid.is_none()) {
+        match self.players.values().any(|p| p.bid.is_none()) {
             true => CycleStage::Bidding,
             false => CycleStage::Dealing,
         }
@@ -231,14 +232,19 @@ impl Game {
 
     fn start_new_set(&mut self) {
         let (mode, count) =
-            Self::get_new_cards_mode(self.dealing_mode, self.cards_count, self.decks.len());
+            Self::get_new_cards_mode(self.dealing_mode, self.cards_count, self.players.len());
 
         self.dealing_mode = mode;
         self.cards_count = count;
 
-        let players: Vec<_> = self.decks.keys().cloned().collect();
+        let mut deck = Card::shuffled_deck();
 
-        (self.decks, self.trump) = Self::get_decks(&players, count);
+        for (_, player) in self.players.iter_mut() {
+            player.deck = deck.drain(..self.cards_count).collect();
+            player.bid = None;
+        }
+
+        self.trump = deck[0];
     }
 
     fn get_new_cards_mode(
@@ -264,7 +270,7 @@ impl Game {
         }
     }
 
-    fn get_decks(players: &[String], cards: usize) -> (IndexMap<String, Player>, Card) {
+    fn init_players(players: &[String], cards: usize) -> (IndexMap<String, Player>, Card) {
         let mut deck = Card::shuffled_deck();
 
         let decks = players
@@ -277,7 +283,7 @@ impl Game {
 
     fn remove_lifes(&mut self) {
         let lost = self
-            .decks
+            .players
             .iter_mut()
             .filter(|(_, p)| p.bid != Some(p.rounds));
 
@@ -287,27 +293,33 @@ impl Game {
     }
 
     fn remove_losers(&mut self) {
-        self.decks.retain(|_, p| p.lifes != 0)
+        self.players.retain(|_, p| p.lifes != 0)
     }
 
-    fn award_points(&mut self, turn: Turn) {
+    fn award_points(&mut self) {
+        let winner = self
+            .round_cards
+            .iter()
+            .next()
+            .expect("Should contain a turn");
+
         let player = self
-            .decks
-            .get_mut(&turn.player_id)
+            .players
+            .get_mut(&winner.player_id)
             .expect("This player should exist here");
 
         player.rounds += 1;
     }
 
     fn get_points(&self) -> HashMap<String, usize> {
-        self.decks
+        self.players
             .iter()
             .map(|(id, player)| (id.clone(), player.rounds))
             .collect()
     }
 
     fn get_lifes(&self) -> HashMap<String, usize> {
-        self.decks
+        self.players
             .iter()
             .map(|(id, player)| (id.clone(), player.lifes))
             .collect()
@@ -346,7 +358,7 @@ mod tests {
         assert_eq!(info.next, player1);
         assert_eq!(info.state, RoundState::Ended);
 
-        let first_played_card = game.decks[&player1].deck[0];
+        let first_played_card = game.players[&player1].deck[0];
         let first_turn = Turn {
             player_id: player1,
             card: first_played_card,
@@ -357,15 +369,30 @@ mod tests {
         assert!(game.round_cards.len() == 1);
         assert!(game.round_cards.peek().map(|t| t.card) == Some(first_played_card));
 
-        let second_played_card = game.decks[&player2].deck[0];
+        let second_played_card = game.players[&player2].deck[0];
         let second_turn = Turn {
             player_id: player2.clone(),
             card: second_played_card,
         };
 
-        game.deal(second_turn).unwrap();
+        let info = game.deal(second_turn).unwrap();
+
+        assert!(matches!(
+            info.1,
+            Some(GameEvent::SetEnded {
+                lifes: _,
+                trump: _,
+                decks: _,
+                first: _,
+                possible: _
+            })
+        ));
 
         assert!(game.round_cards.len() == 2);
+
+        let players = game.players.iter().filter(|(_, p)| p.lifes == 5).count();
+
+        assert!(players == 1);
     }
 
     #[test]
