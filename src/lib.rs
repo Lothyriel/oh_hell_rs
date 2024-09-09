@@ -17,9 +17,13 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 pub async fn start_app() {
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::from(
-            "debug,hyper=off,rustls=error",
+            "debug,hyper=off,rustls=error,tungstenite=error",
         ))
-        .with(tracing_subscriber::fmt::layer())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_file(true)
+                .with_line_number(true),
+        )
         .init();
 
     dotenv::dotenv().ok();
