@@ -5,14 +5,14 @@ use indexmap::IndexMap;
 use crate::models::GameError;
 
 use super::{
-    iter::CyclicIterator, BiddingError, Card, DealingMode, GameEvent, Player, RoundInfo,
+    iter::CyclicIterator, BiddingError, Card, DealState, DealingMode, GameEvent, Player, RoundInfo,
     RoundState, Turn, TurnError,
 };
 
 #[derive(Debug)]
 pub struct Game {
     players: IndexMap<String, Player>,
-    round_cards: BinaryHeap<Turn>,
+    pile: BinaryHeap<Turn>,
     dealing_mode: DealingMode,
     cyclic: CyclicIterator<String>,
     cards_count: usize,
@@ -38,7 +38,7 @@ impl Game {
 
         Ok(Self {
             players,
-            round_cards: BinaryHeap::new(),
+            pile: BinaryHeap::new(),
             dealing_mode: DealingMode::Increasing,
             cards_count: initial_cards_count,
             // TODO we need to reset this guy when we remove someone from
@@ -58,7 +58,7 @@ impl Game {
         (decks, self.trump)
     }
 
-    pub fn deal(&mut self, turn: Turn) -> Result<(RoundInfo, Option<GameEvent>), TurnError> {
+    pub fn deal(&mut self, turn: Turn) -> Result<DealState, TurnError> {
         if self.get_cycle_stage() == CycleStage::Bidding {
             return Err(TurnError::BiddingStageActive);
         }
@@ -81,11 +81,11 @@ impl Game {
         player.deck.retain(|&c| c != turn.card);
 
         //add card to the heap
-        self.round_cards.push(turn);
+        self.pile.push(turn);
 
         //finish game
         if self.players.len() == 1 {
-            self.award_points();
+            let pile = self.award_points();
             self.remove_lifes();
             self.remove_losers();
 
@@ -96,12 +96,12 @@ impl Game {
                 lifes: self.get_lifes(),
             };
 
-            return self.deal_round_data(Some(evt));
+            return self.deal_round_data(pile, Some(evt));
         }
 
         //finish set
         if self.players.iter().all(|(_, p)| p.deck.is_empty()) {
-            self.award_points();
+            let pile = self.award_points();
             self.remove_lifes();
             self.remove_losers();
 
@@ -119,24 +119,25 @@ impl Game {
                 decks,
             };
 
-            return self.deal_round_data(Some(evt));
+            return self.deal_round_data(pile, Some(evt));
         }
 
         // finish round
-        if self.round_cards.len() == self.players.len() {
-            self.award_points();
+        if self.pile.len() == self.players.len() {
+            let pile = self.award_points();
 
             let evt = GameEvent::RoundEnded(self.get_points());
-            return self.deal_round_data(Some(evt));
+            return self.deal_round_data(pile, Some(evt));
         }
 
-        self.deal_round_data(None)
+        self.deal_round_data(self.clone_pile(), None)
     }
 
     fn deal_round_data(
         &mut self,
+        pile: Vec<Turn>,
         event: Option<GameEvent>,
-    ) -> Result<(RoundInfo, Option<GameEvent>), TurnError> {
+    ) -> Result<DealState, TurnError> {
         self.cyclic.next();
 
         let possible = self.get_possible_bids();
@@ -149,7 +150,7 @@ impl Game {
             }
         };
 
-        Ok((info, event))
+        Ok(DealState { info, pile, event })
     }
 
     pub fn bid(&mut self, player_id: &String, bid: usize) -> Result<RoundInfo, BiddingError> {
@@ -219,8 +220,8 @@ impl Game {
         }
     }
 
-    pub fn get_pile(&self) -> Vec<Turn> {
-        self.round_cards.iter().cloned().collect()
+    pub fn clone_pile(&self) -> Vec<Turn> {
+        self.pile.iter().cloned().collect()
     }
 
     fn get_cycle_stage(&mut self) -> CycleStage {
@@ -296,14 +297,12 @@ impl Game {
         self.players.retain(|_, p| p.lifes != 0)
     }
 
-    fn award_points(&mut self) {
-        let winner = self
-            .round_cards
-            .iter()
-            .next()
-            .expect("Should contain a turn");
+    fn award_points(&mut self) -> Vec<Turn> {
+        let pile = self.clone_pile();
 
-        self.round_cards.clear();
+        let winner = self.pile.pop().expect("Should contain a turn");
+
+        self.pile.clear();
 
         let player = self
             .players
@@ -311,6 +310,8 @@ impl Game {
             .expect("This player should exist here");
 
         player.rounds += 1;
+
+        pile
     }
 
     fn get_points(&self) -> HashMap<String, usize> {

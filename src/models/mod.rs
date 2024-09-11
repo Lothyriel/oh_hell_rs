@@ -130,6 +130,12 @@ pub enum GameEvent {
     },
 }
 
+pub struct DealState {
+    pub info: RoundInfo,
+    pub event: Option<GameEvent>,
+    pub pile: Vec<Turn>,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct RoundInfo {
     pub next: String,
