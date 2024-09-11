@@ -303,6 +303,8 @@ impl Game {
             .next()
             .expect("Should contain a turn");
 
+        self.round_cards.clear();
+
         let player = self
             .players
             .get_mut(&winner.player_id)
