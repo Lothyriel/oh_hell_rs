@@ -45,7 +45,6 @@ mod tests {
 
             connections.rotate_right(1);
         }
-
     }
 
     async fn get_players(client: &mut Client, count: usize) -> Vec<String> {
@@ -91,8 +90,8 @@ mod tests {
     type Deck = Vec<Card>;
 
     async fn play_round(players: &mut [WebSocket], decks: &[Deck], last: bool) {
-        for i in 0..players.len() {
-            play_turn(players, decks[i][0], i).await;
+        for (i, deck) in decks.iter().enumerate().take(players.len()) {
+            play_turn(players, deck[0], i).await;
         }
 
         if !last {
