@@ -23,7 +23,7 @@ impl<T: Clone> CyclicIterator<T> {
 
     pub fn advance(&mut self) -> T {
         self.iteration_count = 0;
-        self.current_index += 1;
+        self.current_index = (self.current_index + 1) % self.items.len();
         self.items[self.current_index].clone()
     }
 
