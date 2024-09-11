@@ -300,6 +300,10 @@ impl Game {
         for (_, player) in lost {
             player.lifes -= 1;
         }
+
+        for (_, p) in self.players.iter_mut() {
+            p.rounds = 0;
+        }
     }
 
     fn remove_losers(&mut self) {
