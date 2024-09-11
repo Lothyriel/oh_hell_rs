@@ -29,10 +29,12 @@ const MAX_AVAILABLE_CARDS: usize = 40 - 1;
 const MAX_PLAYER_COUNT: usize = 10;
 
 impl Game {
-    pub fn new(player_names: Vec<String>) -> Result<Self, GameError> {
-        validate_game(&player_names)?;
+    pub fn new_default(players: Vec<String>) -> Result<Self, GameError> {
+        Self::new(players, 1)
+    }
 
-        let initial_cards_count = 1;
+    pub fn new(player_names: Vec<String>, initial_cards_count: usize) -> Result<Self, GameError> {
+        validate_game(&player_names)?;
 
         let (players, trump) = Self::init_players(&player_names, initial_cards_count);
 
@@ -158,7 +160,7 @@ impl Game {
             return Err(BiddingError::DealingStageActive);
         }
 
-        if bid > self.cards_count || !self.valid_bid(bid) {
+        if !self.validate_bid(bid) {
             return Err(BiddingError::BidOutOfRange);
         }
 
@@ -195,14 +197,20 @@ impl Game {
         Ok(info)
     }
 
-    fn valid_bid(&self, bid: usize) -> bool {
+    fn validate_bid(&mut self, bid: usize) -> bool {
+        let last = self.cyclic.peek_next().is_none();
+
+        bid <= self.cards_count && !self.makes_perfect_bidding_round(bid, last)
+    }
+
+    fn makes_perfect_bidding_round(&self, bid: usize, last: bool) -> bool {
         let current_bidding: usize = self
             .players
             .iter()
             .map(|(_, p)| p.bid.unwrap_or_default())
             .sum();
 
-        self.cyclic.peek_next().is_some() || bid + current_bidding != self.cards_count
+        last && bid + current_bidding == self.cards_count
     }
 
     pub fn current_player(&self) -> String {
@@ -211,12 +219,13 @@ impl Game {
 
     pub fn get_possible_bids(&self) -> Vec<usize> {
         let last = self.cyclic.peek_next().is_none();
-        let n = self.players.len();
 
         if last {
-            (0..n).filter(|&i| self.valid_bid(i)).collect()
+            (0..=self.cards_count)
+                .filter(|&i| !self.makes_perfect_bidding_round(i, last))
+                .collect()
         } else {
-            (0..n).collect()
+            (0..=self.cards_count).collect()
         }
     }
 
@@ -350,8 +359,8 @@ mod tests {
         let player1 = "P1".to_string();
         let player2 = "P2".to_string();
 
-        let mut game = Game::new(vec![player1.clone(), player2.clone()]).unwrap();
-        assert!(game.round_cards.is_empty());
+        let mut game = Game::new_default(vec![player1.clone(), player2.clone()]).unwrap();
+        assert!(game.pile.is_empty());
 
         let info = game.bid(&player1, 1).unwrap();
         assert_eq!(info.next, player2);
@@ -369,8 +378,8 @@ mod tests {
 
         game.deal(first_turn).unwrap();
 
-        assert!(game.round_cards.len() == 1);
-        assert!(game.round_cards.peek().map(|t| t.card) == Some(first_played_card));
+        assert!(game.pile.len() == 1);
+        assert!(game.pile.peek().map(|t| t.card) == Some(first_played_card));
 
         let second_played_card = game.players[&player2].deck[0];
         let second_turn = Turn {
@@ -378,10 +387,10 @@ mod tests {
             card: second_played_card,
         };
 
-        let info = game.deal(second_turn).unwrap();
+        let state = game.deal(second_turn).unwrap();
 
         assert!(matches!(
-            info.1,
+            state.event,
             Some(GameEvent::SetEnded {
                 lifes: _,
                 trump: _,
@@ -391,7 +400,7 @@ mod tests {
             })
         ));
 
-        assert!(game.round_cards.len() == 2);
+        assert!(state.pile.len() == 2);
 
         let players = game.players.iter().filter(|(_, p)| p.lifes == 5).count();
 
@@ -403,7 +412,10 @@ mod tests {
         let player1 = "P1".to_string();
         let player2 = "P2".to_string();
 
-        let mut game = Game::new(vec![player1.clone(), player2.clone()]).unwrap();
+        let mut game = Game::new_default(vec![player1.clone(), player2.clone()]).unwrap();
+
+        let possible = game.get_possible_bids();
+        assert_eq!(possible, vec![0, 1]);
 
         let info = game.bid(&player1, 1).unwrap();
         assert_eq!(info.next, player2);
@@ -414,6 +426,32 @@ mod tests {
 
         let possible = game.get_possible_bids();
         assert_eq!(possible, vec![1]);
+    }
+
+    #[test]
+    fn test_possible_bid() {
+        let player1 = "P1".to_string();
+        let player2 = "P2".to_string();
+
+        let mut game = Game::new(vec![player1.clone(), player2.clone()], 2).unwrap();
+
+        let possible = game.get_possible_bids();
+        assert_eq!(possible, vec![0, 1, 2]);
+
+        game.bid(&player1, 1).unwrap();
+
+        let possible = game.get_possible_bids();
+        assert_eq!(possible, vec![0, 2]);
+
+        let mut game = Game::new(vec![player1.clone(), player2], 3).unwrap();
+
+        let possible = game.get_possible_bids();
+        assert_eq!(possible, vec![0, 1, 2, 3]);
+
+        game.bid(&player1, 3).unwrap();
+
+        let possible = game.get_possible_bids();
+        assert_eq!(possible, vec![1, 2, 3]);
     }
 
     #[test]
