@@ -177,11 +177,15 @@ pub enum GameError {
     InvalidBid(#[from] BiddingError),
 }
 
-#[derive(Debug, thiserror::Error, Display)]
+#[derive(Debug, thiserror::Error)]
 pub enum TurnError {
+    #[error("BiddingStageActive")]
     BiddingStageActive,
-    NotYourTurn,
+    #[error("Expected {expected}")]
+    NotYourTurn { expected: String },
+    #[error("NotYourCard")]
     NotYourCard,
+    #[error("InvalidPlayer")]
     InvalidPlayer,
 }
 

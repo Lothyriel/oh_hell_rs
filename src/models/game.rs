@@ -14,7 +14,8 @@ pub struct Game {
     players: IndexMap<String, Player>,
     pile: BinaryHeap<Turn>,
     dealing_mode: DealingMode,
-    cyclic: CyclicIterator<String>,
+    bidding_iter: CyclicIterator<String>,
+    round_iter: CyclicIterator<String>,
     cards_count: usize,
     trump: Card,
 }
@@ -45,7 +46,8 @@ impl Game {
             cards_count: initial_cards_count,
             // TODO we need to reset this guy when we remove someone from
             // the game (player lost all lifes)
-            cyclic: CyclicIterator::new(player_names),
+            bidding_iter: CyclicIterator::new(player_names.clone()),
+            round_iter: CyclicIterator::new(player_names),
             trump,
         })
     }
@@ -70,10 +72,15 @@ impl Game {
             .get_mut(&turn.player_id)
             .ok_or(TurnError::InvalidPlayer)?;
 
-        let current_dealer = self.cyclic.peek();
+        let current_dealer = self
+            .round_iter
+            .peek()
+            .expect("Should have a current dealer");
 
-        if current_dealer != Some(&turn.player_id) {
-            return Err(TurnError::NotYourTurn);
+        if current_dealer != &turn.player_id {
+            return Err(TurnError::NotYourTurn {
+                expected: current_dealer.clone(),
+            });
         }
 
         if !player.deck.contains(&turn.card) {
@@ -85,40 +92,32 @@ impl Game {
         //add card to the heap
         self.pile.push(turn);
 
-        //finish game
-        if self.players.len() == 1 {
-            let pile = self.award_points();
-            self.remove_lifes();
-            self.remove_losers();
-
-            let first = self.players.first().expect("Should contain one");
-
-            let evt = GameEvent::Ended {
-                winner: first.0.to_string(),
-                lifes: self.get_lifes(),
-            };
-
-            return self.deal_round_data(pile, Some(evt));
-        }
-
         //finish set
         if self.players.iter().all(|(_, p)| p.deck.is_empty()) {
             let pile = self.award_points();
             self.remove_lifes();
             self.remove_losers();
 
-            self.start_new_set();
+            let first = self.bidding_iter.advance();
 
-            let (decks, trump) = self.clone_decks();
+            //finish game
+            let evt = if self.players.iter().filter(|(_, p)| p.lifes > 0).count() == 1 {
+                GameEvent::Ended {
+                    winner: first,
+                    lifes: self.get_lifes(),
+                }
+            } else {
+                self.start_new_set();
 
-            let first = self.current_player();
+                let (decks, trump) = self.clone_decks();
 
-            let evt = GameEvent::SetEnded {
-                lifes: self.get_lifes(),
-                possible: self.get_possible_bids(),
-                first,
-                trump,
-                decks,
+                GameEvent::SetEnded {
+                    lifes: self.get_lifes(),
+                    possible: self.get_possible_bids(),
+                    first,
+                    trump,
+                    decks,
+                }
             };
 
             return self.deal_round_data(pile, Some(evt));
@@ -140,14 +139,14 @@ impl Game {
         pile: Vec<Turn>,
         event: Option<GameEvent>,
     ) -> Result<DealState, TurnError> {
-        self.cyclic.next();
-
         let possible = self.get_possible_bids();
 
-        let info = match self.cyclic.peek() {
+        self.round_iter.next();
+
+        let info = match self.round_iter.peek() {
             Some(n) => RoundInfo::new(n.clone(), RoundState::Active, possible),
             None => {
-                let next = self.cyclic.advance();
+                let next = self.round_iter.advance();
                 RoundInfo::new(next, RoundState::Ended, possible)
             }
         };
@@ -169,7 +168,7 @@ impl Game {
             .get_mut(player_id)
             .ok_or(BiddingError::InvalidPlayer)?;
 
-        let current_bidder = self.cyclic.peek();
+        let current_bidder = self.bidding_iter.peek();
 
         if Some(player_id) != current_bidder {
             return Err(BiddingError::NotYourTurn);
@@ -181,16 +180,18 @@ impl Game {
 
         player.bid = Some(bid);
 
-        self.cyclic.next();
+        self.bidding_iter.next();
 
         let possible = self.get_possible_bids();
 
-        let info = match self.cyclic.peek() {
+        let info = match self.bidding_iter.peek() {
             Some(n) => RoundInfo::new(n.clone(), RoundState::Active, possible),
             None => {
-                let next = self.cyclic.reset();
+                self.bidding_iter.advance();
 
-                RoundInfo::new(next, RoundState::Ended, possible)
+                let next = self.round_iter.peek().expect("Expected first dealer");
+
+                RoundInfo::new(next.clone(), RoundState::Ended, possible)
             }
         };
 
@@ -198,7 +199,7 @@ impl Game {
     }
 
     fn validate_bid(&mut self, bid: usize) -> bool {
-        let last = self.cyclic.peek_next().is_none();
+        let last = self.bidding_iter.peek_next().is_none();
 
         bid <= self.cards_count && !self.makes_perfect_bidding_round(bid, last)
     }
@@ -213,12 +214,15 @@ impl Game {
         last && bid + current_bidding == self.cards_count
     }
 
-    pub fn current_player(&self) -> String {
-        self.cyclic.peek().expect("Should have a player").clone()
+    pub fn current_bidding_player(&self) -> String {
+        self.bidding_iter
+            .peek()
+            .expect("Should have a player")
+            .clone()
     }
 
     pub fn get_possible_bids(&self) -> Vec<usize> {
-        let last = self.cyclic.peek_next().is_none();
+        let last = self.bidding_iter.peek_next().is_none();
 
         if last {
             (0..=self.cards_count)
@@ -321,6 +325,8 @@ impl Game {
             .players
             .get_mut(&winner.player_id)
             .expect("This player should exist here");
+
+        //self.round_iter.set_on(&winner.player_id);
 
         player.rounds += 1;
 

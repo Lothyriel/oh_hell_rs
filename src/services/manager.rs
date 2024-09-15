@@ -309,7 +309,7 @@ impl Manager {
 
                 let (decks, trump) = game.clone_decks();
 
-                let first = game.current_player();
+                let first = game.current_bidding_player();
 
                 let possible = game.get_possible_bids();
 
