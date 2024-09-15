@@ -1,9 +1,11 @@
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use futures::{stream::FusedStream, SinkExt, StreamExt};
     use oh_hell::{
         infra::{
-            auth::{ProfileParams, TokenResponse},
+            auth::{get_claims_from_token, ProfileParams, TokenResponse},
             lobby::CreateLobbyResponse,
             ClientGameMessage, ClientMessage, JoinLobbyDto, ServerMessage,
         },
@@ -23,27 +25,25 @@ mod tests {
 
         let tokens = get_players(&mut client, 2).await;
 
-        let mut connections = join_lobby(&mut client, &tokens).await;
+        let mut player_data = join_lobby(&mut client, tokens).await;
 
-        ready(&mut connections).await;
+        ready(&mut player_data).await;
 
         let mut cards_count = 1;
 
         loop {
-            let decks = decks(&mut connections, cards_count).await;
+            get_decks(&mut player_data, cards_count).await;
 
             // todo need to loop cycle the players between sets
-            play_set(&mut connections, decks, cards_count).await;
+            play_set(&mut player_data, cards_count).await;
 
             cards_count += 1;
 
-            for p in &mut connections {
-                if assert_game_or_set_ended(p).await {
+            for p in player_data.values_mut() {
+                if assert_game_or_set_ended(&mut p.connection).await {
                     return;
                 }
             }
-
-            connections.rotate_right(1);
         }
     }
 
@@ -79,106 +79,127 @@ mod tests {
         }
     }
 
-    async fn play_set(players: &mut Vec<WebSocket>, decks: Vec<Deck>, rounds_count: usize) {
+    async fn play_set(players: &mut HashMap<String, PlayerData>, rounds_count: usize) {
         bidding(players, rounds_count).await;
 
         for i in 0..rounds_count {
-            play_round(players, &decks, i == rounds_count - 1).await;
+            play_round(players, i == rounds_count - 1).await;
         }
     }
 
     type Deck = Vec<Card>;
 
-    async fn play_round(players: &mut [WebSocket], decks: &[Deck], last: bool) {
-        for (i, deck) in decks.iter().enumerate().take(players.len()) {
-            play_turn(players, deck[0], i).await;
+    async fn play_round(players: &mut HashMap<String, PlayerData>, last: bool) {
+        for _ in 0..players.len() {
+            play_turn(players).await;
         }
 
         if !last {
-            for p in players.iter_mut() {
-                assert_game_msg(p, validate_round_ended).await;
+            for p in players.values_mut() {
+                assert_game_msg(&mut p.connection, validate_round_ended).await;
             }
         }
     }
 
-    async fn play_turn(players: &mut [WebSocket], deck: Card, index: usize) {
-        for p in players.iter_mut() {
-            assert_game_msg(p, validate_player_turn).await;
+    async fn play_turn(players: &mut HashMap<String, PlayerData>) {
+        let first_connection = players.values_mut().next().unwrap();
+
+        let next = get_next_turn_player(&mut first_connection.connection).await;
+
+        for p in players.values_mut().skip(1) {
+            get_next_turn_player(&mut p.connection).await;
         }
 
-        let msg = ClientGameMessage::PlayTurn { card: deck };
+        let next = players.get_mut(&next).unwrap();
 
-        send_msg(&mut players[index], msg).await;
+        let msg = ClientGameMessage::PlayTurn {
+            card: next.deck.swap_remove(0),
+        };
 
-        for p in players.iter_mut() {
-            assert_game_msg(p, validate_turn_played).await;
-        }
-    }
+        send_msg(&mut next.connection, msg).await;
 
-    async fn bidding(players: &mut Vec<WebSocket>, bid: usize) {
-        for i in 0..players.len() {
-            bid_turn(players, i, bid).await;
-        }
-    }
-
-    async fn bid_turn(players: &mut Vec<WebSocket>, index: usize, bid: usize) {
-        for p in players.iter_mut() {
-            assert_game_msg(p, validate_bidding_turn).await;
-        }
-
-        send_msg(&mut players[index], ClientGameMessage::PutBid { bid }).await;
-
-        for p in players {
-            assert_game_msg(p, validate_player_bidded).await;
+        for p in players.values_mut() {
+            assert_game_msg(&mut p.connection, validate_turn_played).await;
         }
     }
 
-    async fn decks(players: &mut Vec<WebSocket>, cards_count: usize) -> Vec<Deck> {
-        for p in players.iter_mut() {
-            assert_game_msg(p, validate_set_start).await;
+    async fn bidding(players: &mut HashMap<String, PlayerData>, bid: usize) {
+        for _ in 0..players.len() {
+            bid_turn(players, bid).await;
+        }
+    }
+
+    async fn bid_turn(players: &mut HashMap<String, PlayerData>, bid: usize) {
+        let data = players.values_mut().next().unwrap();
+
+        let next = get_next_bidding_player(&mut data.connection).await;
+
+        for p in players.values_mut().skip(1) {
+            get_next_bidding_player(&mut p.connection).await;
         }
 
-        let mut decks = vec![];
+        let next = players.get_mut(&next).unwrap();
 
-        for p in players {
-            let deck = get_deck(p).await;
+        send_msg(&mut next.connection, ClientGameMessage::PutBid { bid }).await;
+
+        for p in players.values_mut() {
+            assert_game_msg(&mut p.connection, validate_player_bidded).await;
+        }
+    }
+
+    struct PlayerData {
+        connection: WebSocket,
+        deck: Deck,
+    }
+
+    async fn get_decks(players: &mut HashMap<String, PlayerData>, cards_count: usize) {
+        for p in players.values_mut() {
+            assert_game_msg(&mut p.connection, validate_set_start).await;
+        }
+
+        for p in players.values_mut() {
+            let deck = get_deck(&mut p.connection).await;
 
             assert!(deck.len() == cards_count);
 
-            decks.push(deck);
+            p.deck = deck;
         }
-
-        decks
     }
 
-    async fn join_lobby(client: &mut Client, players: &[String]) -> Vec<WebSocket> {
-        let lobby_id = create_lobby(client, &players[0]).await;
+    async fn join_lobby(client: &mut Client, tokens: Vec<String>) -> HashMap<String, PlayerData> {
+        let lobby_id = create_lobby(client, &tokens[0]).await;
 
-        for (i, p) in players.iter().enumerate() {
+        for (i, p) in tokens.iter().enumerate() {
             let lobby = join_lobby_http(client, p, &lobby_id).await;
             assert!(lobby.players.len() == i + 1);
         }
 
-        let mut connections = vec![];
+        let mut connections = HashMap::new();
 
-        for p in players {
-            connections.push(connect_ws(p.clone()).await);
+        for p in tokens {
+            let claims = get_claims_from_token(&p).await.unwrap();
+
+            let data = PlayerData {
+                connection: connect_ws(p.clone()).await,
+                deck: Vec::new(),
+            };
+
+            connections.insert(claims.id(), data);
         }
 
         connections
     }
 
-    async fn ready(players: &mut [WebSocket]) {
+    async fn ready(players: &mut HashMap<String, PlayerData>) {
         let msg = ClientGameMessage::PlayerStatusChange { ready: true };
 
-        for p in players.iter_mut() {
-            send_msg(p, msg).await;
+        for p in players.values_mut() {
+            send_msg(&mut p.connection, msg).await;
         }
 
-        for i in 0..players.len() {
-            for _ in 0..players.len() {
-                let player = &mut players[i];
-                assert_game_msg(player, validate_player_status_change).await;
+        for _ in 0..players.len() {
+            for p in players.values_mut() {
+                assert_game_msg(&mut p.connection, validate_player_status_change).await;
             }
         }
     }
@@ -229,10 +250,27 @@ mod tests {
         matches!(m, ServerMessage::SetStart { trump: _ })
     }
 
+    async fn get_next_turn_player(stream: &mut WebSocket) -> String {
+        match assert_game_msg(stream, validate_player_turn).await {
+            ServerMessage::PlayerTurn { player_id } => player_id,
+            _ => panic!("Should be a PlayerTurn message"),
+        }
+    }
+
+    async fn get_next_bidding_player(stream: &mut WebSocket) -> String {
+        match assert_game_msg(stream, validate_bidding_turn).await {
+            ServerMessage::PlayerBiddingTurn {
+                player_id,
+                possible_bids: _,
+            } => player_id,
+            _ => panic!("Should be a PlayerTurn message"),
+        }
+    }
+
     async fn get_deck(stream: &mut WebSocket) -> Deck {
         match assert_game_msg(stream, |m| matches!(m, ServerMessage::PlayerDeck(_))).await {
             ServerMessage::PlayerDeck(c) => c,
-            _ => panic!("Should be a deck message"),
+            _ => panic!("Should be a PlayerDeck message"),
         }
     }
 
