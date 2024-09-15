@@ -31,7 +31,7 @@ mod tests {
 
         let mut cards_count = 1;
 
-        loop {
+        'outer: loop {
             get_decks(&mut player_data, cards_count).await;
 
             // todo need to loop cycle the players between sets
@@ -41,7 +41,7 @@ mod tests {
 
             for p in player_data.values_mut() {
                 if assert_game_or_set_ended(&mut p.connection).await {
-                    return;
+                    break 'outer;
                 }
             }
         }
