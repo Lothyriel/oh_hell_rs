@@ -72,7 +72,7 @@ pub enum ServerMessage {
     RoundEnded(PlayerPoints),
     PlayerDeck(Vec<Card>),
     SetStart {
-        trump: Card,
+        upcard: Card,
     },
     SetEnded(PlayerPoints),
     GameEnded {

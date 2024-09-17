@@ -122,7 +122,7 @@ impl Manager {
         match state.event {
             Some(GameEvent::SetEnded {
                 lifes,
-                trump,
+                upcard,
                 decks,
                 first,
                 possible,
@@ -130,7 +130,7 @@ impl Manager {
                 let msg = ServerMessage::SetEnded(lifes);
                 self.broadcast_msg(&players, &msg).await;
 
-                self.init_set(decks, first, trump, possible).await;
+                self.init_set(decks, first, upcard, possible).await;
             }
             Some(GameEvent::RoundEnded(points)) => {
                 let msg = ServerMessage::RoundEnded(points);
@@ -307,7 +307,7 @@ impl Manager {
             let set_info = if should_start {
                 let game = Game::new_default(lobby.get_players_id())?;
 
-                let (decks, trump) = game.clone_decks();
+                let (decks, upcard) = game.clone_decks();
 
                 let first = game.current_bidding_player();
 
@@ -315,7 +315,7 @@ impl Manager {
 
                 lobby.state = LobbyState::Playing(game);
 
-                Some((decks, first, trump, possible))
+                Some((decks, first, upcard, possible))
             } else {
                 None
             };
@@ -326,8 +326,8 @@ impl Manager {
         let msg = ServerMessage::PlayerStatusChange { player_id, ready };
         self.broadcast_msg(&players, &msg).await;
 
-        if let Some((decks, first, trump, possible_bids)) = set_info {
-            self.init_set(decks, first, trump, possible_bids).await;
+        if let Some((decks, first, upcard, possible_bids)) = set_info {
+            self.init_set(decks, first, upcard, possible_bids).await;
         }
 
         Ok(())
@@ -337,12 +337,12 @@ impl Manager {
         &self,
         decks: IndexMap<String, Vec<Card>>,
         first: String,
-        trump: Card,
+        upcard: Card,
         possible_bids: Vec<usize>,
     ) {
         let players: Vec<_> = decks.keys().cloned().collect();
 
-        let msg = ServerMessage::SetStart { trump };
+        let msg = ServerMessage::SetStart { upcard };
         self.broadcast_msg(&players, &msg).await;
 
         for (p, deck) in decks {

@@ -12,12 +12,12 @@ use super::{
 #[derive(Debug)]
 pub struct Game {
     players: IndexMap<String, Player>,
-    pile: BinaryHeap<Turn>,
+    pile: BinaryHeap<(u16, Turn)>,
     dealing_mode: DealingMode,
     bidding_iter: CyclicIterator<String>,
     round_iter: CyclicIterator<String>,
     cards_count: usize,
-    trump: Card,
+    upcard: Card,
 }
 
 #[derive(PartialEq, Debug)]
@@ -37,7 +37,7 @@ impl Game {
     pub fn new(player_names: Vec<String>, initial_cards_count: usize) -> Result<Self, GameError> {
         validate_game(&player_names)?;
 
-        let (players, trump) = Self::init_players(&player_names, initial_cards_count);
+        let (players, upcard) = Self::init_players(&player_names, initial_cards_count);
 
         Ok(Self {
             players,
@@ -48,7 +48,7 @@ impl Game {
             // the game (player lost all lifes)
             bidding_iter: CyclicIterator::new(player_names.clone()),
             round_iter: CyclicIterator::new(player_names),
-            trump,
+            upcard,
         })
     }
 
@@ -59,7 +59,7 @@ impl Game {
             .map(|(id, p)| (id.clone(), p.deck.clone()))
             .collect();
 
-        (decks, self.trump)
+        (decks, self.upcard)
     }
 
     pub fn deal(&mut self, turn: Turn) -> Result<DealState, TurnError> {
@@ -90,7 +90,7 @@ impl Game {
         player.deck.retain(|&c| c != turn.card);
 
         //add card to the heap
-        self.pile.push(turn);
+        self.pile.push((self.get_card_value(turn.card), turn));
 
         //finish set
         if self.players.iter().all(|(_, p)| p.deck.is_empty()) {
@@ -116,13 +116,13 @@ impl Game {
             } else {
                 self.start_new_set();
 
-                let (decks, trump) = self.clone_decks();
+                let (decks, upcard) = self.clone_decks();
 
                 GameEvent::SetEnded {
                     lifes: self.get_lifes(),
                     possible: self.get_possible_bids(),
                     first,
-                    trump,
+                    upcard,
                     decks,
                 }
             };
@@ -245,7 +245,7 @@ impl Game {
     }
 
     pub fn clone_pile(&self) -> Vec<Turn> {
-        self.pile.iter().cloned().collect()
+        self.pile.iter().cloned().map(|(_, t)| t).collect()
     }
 
     fn get_cycle_stage(&mut self) -> CycleStage {
@@ -269,7 +269,7 @@ impl Game {
             player.bid = None;
         }
 
-        self.trump = deck[0];
+        self.upcard = deck[0];
     }
 
     fn get_new_cards_mode(
@@ -328,7 +328,7 @@ impl Game {
     fn award_points(&mut self) -> Vec<Turn> {
         let pile = self.clone_pile();
 
-        let winner = self.pile.pop().expect("Should contain a turn");
+        let (_, winner) = self.pile.pop().expect("Should contain a turn");
 
         self.pile.clear();
 
@@ -356,6 +356,16 @@ impl Game {
             .iter()
             .map(|(id, player)| (id.clone(), player.lifes))
             .collect()
+    }
+
+    fn get_card_value(&self, card: Card) -> u16 {
+        let card_value = card.get_value() as u16;
+
+        if self.upcard.rank.get_next() == card.rank {
+            card_value + 100
+        } else {
+            card_value
+        }
     }
 }
 
@@ -400,7 +410,7 @@ mod tests {
         game.deal(first_turn).unwrap();
 
         assert!(game.pile.len() == 1);
-        assert!(game.pile.peek().map(|t| t.card) == Some(first_played_card));
+        assert!(game.pile.peek().map(|(_, t)| t.card) == Some(first_played_card));
 
         let second_played_card = game.players[&player2].deck[0];
         let second_turn = Turn {
@@ -414,7 +424,7 @@ mod tests {
             state.event,
             Some(GameEvent::SetEnded {
                 lifes: _,
-                trump: _,
+                upcard: _,
                 decks: _,
                 first: _,
                 possible: _

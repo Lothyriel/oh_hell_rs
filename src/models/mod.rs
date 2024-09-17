@@ -61,8 +61,8 @@ impl Player {
     Debug, serde::Serialize, serde::Deserialize, Clone, Copy, PartialEq, PartialOrd, Eq, Ord,
 )]
 pub struct Card {
-    rank: Rank,
-    suit: Suit,
+    pub rank: Rank,
+    pub suit: Suit,
 }
 
 impl Card {
@@ -83,6 +83,12 @@ impl Card {
 
         deck
     }
+
+    fn get_value(&self) -> u8 {
+        let rank = self.rank as u8 * 10;
+        let suit = self.suit as u8;
+        rank + suit
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, EnumIter, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
@@ -99,6 +105,23 @@ pub enum Rank {
     One,
     Two,
     Three,
+}
+
+impl Rank {
+    fn get_next(&self) -> Rank {
+        match self {
+            Rank::Four => Rank::Five,
+            Rank::Five => Rank::Six,
+            Rank::Six => Rank::Seven,
+            Rank::Seven => Rank::Ten,
+            Rank::Ten => Rank::Eleven,
+            Rank::Eleven => Rank::Twelve,
+            Rank::Twelve => Rank::One,
+            Rank::One => Rank::Two,
+            Rank::Two => Rank::Three,
+            Rank::Three => Rank::Four,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, EnumIter, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
@@ -118,7 +141,7 @@ pub enum LobbyState {
 pub enum GameEvent {
     SetEnded {
         lifes: HashMap<String, usize>,
-        trump: Card,
+        upcard: Card,
         decks: IndexMap<String, Vec<Card>>,
         first: String,
         possible: Vec<usize>,
@@ -224,5 +247,17 @@ mod tests {
         let b = Card::new(Rank::Six, Suit::Golds);
 
         assert!(a > b);
+    }
+
+    #[test]
+    fn test_value() {
+        assert!(Card::new(Rank::Four, Suit::Golds).get_value() == 0);
+        assert!(Card::new(Rank::Four, Suit::Clubs).get_value() == 3);
+        assert!(Card::new(Rank::Six, Suit::Golds).get_value() == 20);
+        assert!(Card::new(Rank::Six, Suit::Clubs).get_value() == 23);
+        assert!(Card::new(Rank::Twelve, Suit::Clubs).get_value() == 63);
+        assert!(Card::new(Rank::One, Suit::Clubs).get_value() == 73);
+        assert!(Card::new(Rank::Three, Suit::Golds).get_value() == 90);
+        assert!(Card::new(Rank::Three, Suit::Clubs).get_value() == 93);
     }
 }

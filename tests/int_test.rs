@@ -247,7 +247,7 @@ mod tests {
     }
 
     fn validate_set_start(m: &ServerMessage) -> bool {
-        matches!(m, ServerMessage::SetStart { trump: _ })
+        matches!(m, ServerMessage::SetStart { upcard: _ })
     }
 
     async fn get_next_turn_player(stream: &mut WebSocket) -> String {
