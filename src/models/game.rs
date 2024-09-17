@@ -100,10 +100,17 @@ impl Game {
 
             let first = self.bidding_iter.advance();
 
+            let players_alive = self.players.iter().filter(|(_, p)| p.lifes > 0);
+
             //finish game
-            let evt = if self.players.iter().filter(|(_, p)| p.lifes > 0).count() == 1 {
+            let evt = if players_alive.count() < 2 {
+                let winner = match self.players.len() == 1 {
+                    true => Some(self.players.first().expect("Should contain one").0.clone()),
+                    false => None,
+                };
+
                 GameEvent::Ended {
-                    winner: first,
+                    winner,
                     lifes: self.get_lifes(),
                 }
             } else {
