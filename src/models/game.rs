@@ -146,7 +146,11 @@ impl Game {
         let info = match self.round_iter.peek() {
             Some(n) => RoundInfo::new(n.clone(), RoundState::Active, possible),
             None => {
-                let next = self.round_iter.advance();
+                let next = match matches!(event, Some(GameEvent::RoundEnded(_))) {
+                    true => self.round_iter.set_on(&pile[0].player_id),
+                    false => self.round_iter.advance(),
+                };
+
                 RoundInfo::new(next, RoundState::Ended, possible)
             }
         };

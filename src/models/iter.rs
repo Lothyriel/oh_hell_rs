@@ -8,7 +8,7 @@ pub struct CyclicIterator<T: Clone> {
     iteration_count: usize,
 }
 
-impl<T: Clone> CyclicIterator<T> {
+impl<T: Clone + PartialEq> CyclicIterator<T> {
     pub fn new(items: Vec<T>) -> Self {
         if items.is_empty() {
             panic!("The idea is to have at least one item to loop around")
@@ -30,6 +30,17 @@ impl<T: Clone> CyclicIterator<T> {
     pub fn reset(&mut self) -> T {
         self.iteration_count = 0;
         self.items[self.current_index].clone()
+    }
+
+    pub fn set_on(&mut self, item: &T) -> T {
+        let idx = self
+            .items
+            .iter()
+            .position(|i| i == item)
+            .expect("Should be here");
+
+        self.current_index = idx;
+        self.reset()
     }
 
     pub fn peek(&self) -> Option<&T> {
