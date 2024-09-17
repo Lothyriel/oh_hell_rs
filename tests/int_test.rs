@@ -65,17 +65,17 @@ mod tests {
                 false
             }
             ServerMessage::GameEnded { winner, lifes } => {
-                if lifes.iter().filter(|(_, &lifes)| lifes > 0).count() == 1 {
-                    let msg = ServerMessage::GameEnded { lifes, winner };
+                let expected_life_values = if winner.is_some() { 1 } else { 0 };
 
-                    println!("Asserted game msg {:?}", msg);
+                assert!(lifes.len() == expected_life_values);
 
-                    true
-                } else {
-                    panic!("The game ended with more than 1 winner")
-                }
+                let msg = ServerMessage::GameEnded { lifes, winner };
+
+                println!("Asserted game msg {:?}", msg);
+
+                true
             }
-            a => panic!("Expected Set or Game end | {a:?}"),
+            msg => panic!("Expected Set or Game end | {msg:?}"),
         }
     }
 

@@ -125,7 +125,7 @@ pub enum GameEvent {
     },
     RoundEnded(HashMap<String, usize>),
     Ended {
-        winner: String,
+        winner: Option<String>,
         lifes: HashMap<String, usize>,
     },
 }

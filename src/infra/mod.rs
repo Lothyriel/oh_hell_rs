@@ -76,7 +76,7 @@ pub enum ServerMessage {
     },
     SetEnded(PlayerPoints),
     GameEnded {
-        winner: String,
+        winner: Option<String>,
         lifes: PlayerPoints,
     },
     PlayerJoined(UserClaims),
