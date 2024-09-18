@@ -146,26 +146,28 @@ impl Game {
         pile: Vec<Turn>,
         event: Option<GameEvent>,
     ) -> Result<DealState, TurnError> {
-        let possible = self.get_possible_bids();
-
         self.round_iter.next();
 
         let info = match self.round_iter.peek() {
-            Some(n) => RoundInfo::new(n.clone(), RoundState::Active, possible),
+            Some(n) => RoundInfo::new(n.clone(), RoundState::Active),
             None => {
                 let next = match matches!(event, Some(GameEvent::RoundEnded(_))) {
                     true => self.round_iter.set_on(&pile[0].player_id),
                     false => self.round_iter.advance(),
                 };
 
-                RoundInfo::new(next, RoundState::Ended, possible)
+                RoundInfo::new(next, RoundState::Ended)
             }
         };
 
         Ok(DealState { info, pile, event })
     }
 
-    pub fn bid(&mut self, player_id: &String, bid: usize) -> Result<RoundInfo, BiddingError> {
+    pub fn bid(
+        &mut self,
+        player_id: &String,
+        bid: usize,
+    ) -> Result<(RoundInfo, Vec<usize>), BiddingError> {
         if self.get_cycle_stage() == CycleStage::Dealing {
             return Err(BiddingError::DealingStageActive);
         }
@@ -196,17 +198,17 @@ impl Game {
         let possible = self.get_possible_bids();
 
         let info = match self.bidding_iter.peek() {
-            Some(n) => RoundInfo::new(n.clone(), RoundState::Active, possible),
+            Some(n) => RoundInfo::new(n.clone(), RoundState::Active),
             None => {
                 self.bidding_iter.advance();
 
                 let next = self.round_iter.peek().expect("Expected first dealer");
 
-                RoundInfo::new(next.clone(), RoundState::Ended, possible)
+                RoundInfo::new(next.clone(), RoundState::Ended)
             }
         };
 
-        Ok(info)
+        Ok((info, possible))
     }
 
     fn validate_bid(&mut self, bid: usize) -> bool {
@@ -393,11 +395,11 @@ mod tests {
         let mut game = Game::new_default(vec![player1.clone(), player2.clone()]).unwrap();
         assert!(game.pile.is_empty());
 
-        let info = game.bid(&player1, 1).unwrap();
+        let (info, _) = game.bid(&player1, 1).unwrap();
         assert_eq!(info.next, player2);
         assert_eq!(info.state, RoundState::Active);
 
-        let info = game.bid(&player2, 1).unwrap();
+        let (info, _) = game.bid(&player2, 1).unwrap();
         assert_eq!(info.next, player1);
         assert_eq!(info.state, RoundState::Ended);
 
@@ -448,7 +450,7 @@ mod tests {
         let possible = game.get_possible_bids();
         assert_eq!(possible, vec![0, 1]);
 
-        let info = game.bid(&player1, 1).unwrap();
+        let (info, _) = game.bid(&player1, 1).unwrap();
         assert_eq!(info.next, player2);
         assert_eq!(info.state, RoundState::Active);
 

@@ -163,16 +163,11 @@ pub struct DealState {
 pub struct RoundInfo {
     pub next: String,
     pub state: RoundState,
-    pub possible_bids: Vec<usize>,
 }
 
 impl RoundInfo {
-    fn new(next: String, state: RoundState, possible_bids: Vec<usize>) -> Self {
-        Self {
-            next,
-            state,
-            possible_bids,
-        }
+    fn new(next: String, state: RoundState) -> Self {
+        Self { next, state }
     }
 }
 

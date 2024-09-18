@@ -159,7 +159,7 @@ impl Manager {
     }
 
     pub async fn bid(&self, bid: usize, player_id: String) -> Result<(), LobbyError> {
-        let (players, info) = {
+        let (players, (info, possible_bids)) = {
             let mut manager = self.inner.lobby.lock().await;
 
             let lobby_id = {
@@ -177,11 +177,11 @@ impl Manager {
 
             let game = lobby.get_game()?;
 
-            let bidding = game
+            let info = game
                 .bid(&player_id, bid)
                 .map_err(|e| LobbyError::GameError(GameError::InvalidBid(e)))?;
 
-            (lobby.get_players_id(), bidding)
+            (lobby.get_players_id(), info)
         };
 
         let msg = ServerMessage::PlayerBidded { player_id, bid };
@@ -190,7 +190,7 @@ impl Manager {
         let msg = match info.state {
             RoundState::Active => ServerMessage::PlayerBiddingTurn {
                 player_id: info.next,
-                possible_bids: info.possible_bids,
+                possible_bids,
             },
             RoundState::Ended => ServerMessage::PlayerTurn {
                 player_id: info.next,
