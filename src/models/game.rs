@@ -2,7 +2,10 @@ use std::collections::{BinaryHeap, HashMap};
 
 use indexmap::IndexMap;
 
-use crate::{models::GameError, services::GameInfoDto};
+use crate::{
+    models::GameError,
+    services::{GameInfoDto, PlayerInfoDto},
+};
 
 use super::{
     iter::CyclicIterator, BiddingError, Card, DealState, DealingMode, GameEvent, Player, RoundInfo,
@@ -378,9 +381,16 @@ impl Game {
 
         let deck = player.deck.clone();
 
-        let lifes = self.get_lifes();
-
-        let points = self.get_points();
+        let info = self
+            .players
+            .iter()
+            .map(|(id, p)| PlayerInfoDto {
+                id: id.clone(),
+                lifes: p.lifes,
+                bid: p.bid.expect("Should have a bid by now"),
+                rounds: p.rounds,
+            })
+            .collect();
 
         let current_player = match self.get_cycle_stage() {
             CycleStage::Dealing => self.round_iter.peek(),
@@ -391,8 +401,7 @@ impl Game {
 
         GameInfoDto {
             deck,
-            lifes,
-            points,
+            info,
             current_player,
         }
     }
