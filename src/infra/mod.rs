@@ -9,7 +9,7 @@ use axum::http::StatusCode;
 
 use crate::{
     models::{Card, Turn},
-    services::manager::PlayerStatus,
+    services::{manager::PlayerStatus, GameInfoDto},
 };
 
 pub async fn fallback_handler() -> (StatusCode, &'static str) {
@@ -32,6 +32,7 @@ pub enum ClientGameMessage {
     PlayTurn { card: Card },
     PutBid { bid: usize },
     PlayerStatusChange { ready: bool },
+    Reconnect,
 }
 
 #[derive(serde::Serialize)]
@@ -44,9 +45,10 @@ pub struct GetLobbyDto {
 pub struct JoinLobbyDto {
     pub id: String,
     pub players: Vec<PlayerStatus>,
+    pub should_reconnect: bool,
 }
 
-type PlayerPoints = HashMap<String, usize>;
+pub type PlayerPoints = HashMap<String, usize>;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type", content = "data")]
@@ -80,4 +82,8 @@ pub enum ServerMessage {
         lifes: PlayerPoints,
     },
     PlayerJoined(UserClaims),
+    Reconnect(GameInfoDto),
+    Error {
+        msg: String,
+    },
 }

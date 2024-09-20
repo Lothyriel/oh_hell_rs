@@ -47,8 +47,8 @@ async fn handle_connection(socket: WebSocket, manager: Manager) -> Result<(), Ma
             match process_msg(message, manager.clone(), id.clone()).await {
                 Ok(_) => {}
                 Err(error) => {
-                    tracing::error!("{id} closing connection: {error}");
-                    manager.send_disconnect(&id, error).await;
+                    tracing::error!("{id} Error: {error}");
+                    manager.send_error(&id, error).await;
                     break;
                 }
             }
@@ -124,6 +124,7 @@ async fn handle_game_msg(
     let result = match msg {
         ClientGameMessage::PlayTurn { card } => manager.play_turn(card, player_id).await,
         ClientGameMessage::PutBid { bid } => manager.bid(bid, player_id).await,
+        ClientGameMessage::Reconnect => manager.reconnect(player_id).await,
         ClientGameMessage::PlayerStatusChange { ready } => {
             manager.player_status_change(player_id, ready).await
         }

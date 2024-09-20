@@ -51,37 +51,52 @@ impl Manager {
         &self,
         lobby_id: String,
         user_claims: UserClaims,
-    ) -> Result<Vec<PlayerStatus>, LobbyError> {
-        let (players_status, players) = {
+    ) -> Result<(Vec<PlayerStatus>, bool), LobbyError> {
+        let (players_status, players, should_reconnect) = {
             let mut manager = self.inner.lobby.lock().await;
 
-            let (players_status, players) = {
+            let (players_status, info, should_reconnect) = {
                 let lobby = manager
                     .lobbies
                     .get_mut(&lobby_id)
                     .ok_or(LobbyError::InvalidLobby)?;
 
-                match lobby.state {
-                    LobbyState::NotStarted(_) => {}
-                    LobbyState::Playing(_) => return Err(LobbyError::GameAlreadyStarted),
-                }
+                let player_id = user_claims.id();
 
-                let status = PlayerStatus::new(user_claims.clone());
+                let should_reconnect = match lobby.state {
+                    LobbyState::NotStarted(_) => {
+                        let status = PlayerStatus::new(user_claims.clone());
 
-                lobby.players.insert(user_claims.id(), status);
+                        lobby.players.insert(player_id, status);
 
-                (lobby.get_players(), lobby.get_players_id())
+                        false
+                    }
+                    LobbyState::Playing(_) => {
+                        _ = lobby
+                            .players
+                            .get(&player_id)
+                            .ok_or(LobbyError::WrongLobby)?;
+
+                        true
+                    }
+                };
+
+                (
+                    lobby.get_players(),
+                    lobby.get_players_id(),
+                    should_reconnect,
+                )
             };
 
             manager.players_lobby.insert(user_claims.id(), lobby_id);
 
-            (players_status, players)
+            (players_status, info, should_reconnect)
         };
 
         let msg = ServerMessage::PlayerJoined(user_claims);
         self.broadcast_msg(&players, &msg).await;
 
-        Ok(players_status)
+        Ok((players_status, should_reconnect))
     }
 
     pub async fn play_turn(&self, card: Card, player_id: String) -> Result<(), LobbyError> {
@@ -159,7 +174,7 @@ impl Manager {
     }
 
     pub async fn bid(&self, bid: usize, player_id: String) -> Result<(), LobbyError> {
-        let (players, (info, possible_bids)) = {
+        let (players, info, possible_bids) = {
             let mut manager = self.inner.lobby.lock().await;
 
             let lobby_id = {
@@ -181,7 +196,7 @@ impl Manager {
                 .bid(&player_id, bid)
                 .map_err(|e| LobbyError::GameError(GameError::InvalidBid(e)))?;
 
-            (lobby.get_players_id(), info)
+            (lobby.get_players_id(), info.0, info.1)
         };
 
         let msg = ServerMessage::PlayerBidded { player_id, bid };
@@ -368,6 +383,41 @@ impl Manager {
             }
         }
     }
+
+    pub async fn reconnect(&self, player_id: String) -> Result<(), LobbyError> {
+        let info = {
+            let mut manager = self.inner.lobby.lock().await;
+
+            let lobby_id = {
+                manager
+                    .players_lobby
+                    .get(&player_id)
+                    .ok_or(LobbyError::WrongLobby)
+                    .cloned()?
+            };
+
+            let lobby = manager
+                .lobbies
+                .get_mut(&lobby_id)
+                .ok_or(LobbyError::InvalidLobby)?;
+
+            lobby.get_game()?.get_info(&player_id)
+        };
+
+        let msg = ServerMessage::Reconnect(info);
+
+        self.unicast_msg(&player_id, &msg).await;
+
+        Ok(())
+    }
+
+    pub async fn send_error(&self, id: &str, error: ManagerError) {
+        let msg = ServerMessage::Error {
+            msg: error.to_string(),
+        };
+
+        self.unicast_msg(id, &msg).await;
+    }
 }
 
 async fn send_msg(msg: &ServerMessage, player: &str, connection: &mut Connection) {
@@ -431,7 +481,7 @@ type Connection = SplitSink<WebSocket, Message>;
 struct LobbiesManager {
     lobbies: HashMap<String, Lobby>,
     // TODO make sure to remove entries of this guy wherever is needed
-    players_lobby: HashMap<LobbyId, PlayerId>,
+    players_lobby: HashMap<PlayerId, LobbyId>,
 }
 
 type LobbyId = String;

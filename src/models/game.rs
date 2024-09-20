@@ -2,7 +2,7 @@ use std::collections::{BinaryHeap, HashMap};
 
 use indexmap::IndexMap;
 
-use crate::models::GameError;
+use crate::{models::GameError, services::GameInfoDto};
 
 use super::{
     iter::CyclicIterator, BiddingError, Card, DealState, DealingMode, GameEvent, Player, RoundInfo,
@@ -250,7 +250,7 @@ impl Game {
         self.pile.iter().cloned().map(|(_, t)| t).collect()
     }
 
-    fn get_cycle_stage(&mut self) -> CycleStage {
+    fn get_cycle_stage(&self) -> CycleStage {
         match self.players.values().any(|p| p.bid.is_none()) {
             true => CycleStage::Bidding,
             false => CycleStage::Dealing,
@@ -369,6 +369,33 @@ impl Game {
             card_value
         }
     }
+
+    pub fn get_info(&self, player_id: &str) -> GameInfoDto {
+        let player = self
+            .players
+            .get(player_id)
+            .expect("Player should exist here");
+
+        let deck = player.deck.clone();
+
+        let lifes = self.get_lifes();
+
+        let points = self.get_points();
+
+        let current_player = match self.get_cycle_stage() {
+            CycleStage::Dealing => self.round_iter.peek(),
+            CycleStage::Bidding => self.bidding_iter.peek(),
+        }
+        .expect("Expected to have an item")
+        .clone();
+
+        GameInfoDto {
+            deck,
+            lifes,
+            points,
+            current_player,
+        }
+    }
 }
 
 fn validate_game(players: &[String]) -> Result<(), GameError> {
@@ -405,7 +432,7 @@ mod tests {
 
         let first_played_card = game.players[&player1].deck[0];
         let first_turn = Turn {
-            player_id: player1,
+            player_id: player1.clone(),
             card: first_played_card,
         };
 
@@ -435,9 +462,17 @@ mod tests {
 
         assert!(state.pile.len() == 2);
 
-        let players = game.players.iter().filter(|(_, p)| p.lifes == 5).count();
+        let winners_count = game.players.iter().filter(|(_, p)| p.lifes == 5).count();
 
-        assert!(players == 1);
+        assert!(winners_count == 1);
+
+        let (info, _) = game.bid(&player2, 2).unwrap();
+        assert_eq!(info.next, player1);
+        assert_eq!(info.state, RoundState::Active);
+
+        let (info, _) = game.bid(&player1, 2).unwrap();
+        assert_eq!(info.next, player2);
+        assert_eq!(info.state, RoundState::Ended);
     }
 
     #[test]

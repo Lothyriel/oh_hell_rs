@@ -28,9 +28,13 @@ async fn join_lobby(
     Extension(user_claims): Extension<UserClaims>,
     Path(id): Path<String>,
 ) -> Result<Json<JoinLobbyDto>, LobbyError> {
-    let players = manager.join_lobby(id.clone(), user_claims).await?;
+    let (players, should_reconnect) = manager.join_lobby(id.clone(), user_claims).await?;
 
-    Ok(Json(JoinLobbyDto { players, id }))
+    Ok(Json(JoinLobbyDto {
+        players,
+        id,
+        should_reconnect,
+    }))
 }
 
 async fn create_lobby(
