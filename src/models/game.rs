@@ -327,7 +327,12 @@ impl Game {
     }
 
     fn remove_losers(&mut self) {
-        self.players.retain(|_, p| p.lifes != 0)
+        self.players.retain(|_, p| p.lifes != 0);
+
+        let player_names: Vec<_> = self.players.keys().cloned().collect();
+
+        self.bidding_iter = CyclicIterator::new(player_names.clone());
+        self.round_iter = CyclicIterator::new(player_names);
     }
 
     fn award_points(&mut self) -> Vec<Turn> {
