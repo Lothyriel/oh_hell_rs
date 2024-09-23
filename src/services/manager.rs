@@ -322,9 +322,9 @@ impl Manager {
             let set_info = if should_start {
                 let game = Game::new_default(lobby.get_players_id())?;
 
-                let (decks, upcard) = game.clone_decks();
+                let (decks, upcard) = game.get_decks();
 
-                let first = game.current_bidding_player();
+                let first = game.get_bidding_player();
 
                 let possible = game.get_possible_bids();
 
@@ -401,7 +401,7 @@ impl Manager {
                 .get_mut(&lobby_id)
                 .ok_or(LobbyError::InvalidLobby)?;
 
-            lobby.get_game()?.get_info(&player_id)
+            lobby.get_game()?.get_game_info(&player_id)
         };
 
         let msg = ServerMessage::Reconnect(info);
@@ -480,7 +480,6 @@ type Connection = SplitSink<WebSocket, Message>;
 
 struct LobbiesManager {
     lobbies: HashMap<String, Lobby>,
-    // TODO make sure to remove entries of this guy wherever is needed
     players_lobby: HashMap<PlayerId, LobbyId>,
 }
 
