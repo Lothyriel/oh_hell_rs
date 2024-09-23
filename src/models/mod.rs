@@ -138,6 +138,7 @@ pub enum LobbyState {
     Playing(Game),
 }
 
+#[derive(Debug)]
 pub enum GameEvent {
     SetEnded {
         lifes: HashMap<String, usize>,
@@ -199,8 +200,8 @@ pub enum GameError {
 pub enum TurnError {
     #[error("BiddingStageActive")]
     BiddingStageActive,
-    #[error("Expected {expected}")]
-    NotYourTurn { expected: String },
+    #[error("Expected {expected:?}")]
+    NotYourTurn { expected: Option<String> },
     #[error("NotYourCard")]
     NotYourCard,
     #[error("InvalidPlayer")]

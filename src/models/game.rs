@@ -17,8 +17,8 @@ pub struct Game {
     players: IndexMap<String, Player>,
     pile: BinaryHeap<(u16, Turn)>,
     dealing_mode: DealingMode,
-    bidding_iter: CyclicIterator<String>,
-    round_iter: CyclicIterator<String>,
+    bidding_iter: CyclicIterator,
+    round_iter: CyclicIterator,
     cards_count: usize,
     upcard: Card,
 }
@@ -38,7 +38,7 @@ impl Game {
     }
 
     pub fn new(player_names: Vec<String>, initial_cards_count: usize) -> Result<Self, GameError> {
-        validate_game(&player_names)?;
+        Self::validate_game(&player_names)?;
 
         let (players, upcard) = Self::init_players(&player_names, initial_cards_count);
 
@@ -47,22 +47,10 @@ impl Game {
             pile: BinaryHeap::new(),
             dealing_mode: DealingMode::Increasing,
             cards_count: initial_cards_count,
-            // TODO we need to reset this guy when we remove someone from
-            // the game (player lost all lifes)
-            bidding_iter: CyclicIterator::new(player_names.clone()),
-            round_iter: CyclicIterator::new(player_names),
+            bidding_iter: CyclicIterator::new(player_names.len()),
+            round_iter: CyclicIterator::new(player_names.len()),
             upcard,
         })
-    }
-
-    pub fn clone_decks(&self) -> (IndexMap<String, Vec<Card>>, Card) {
-        let decks = self
-            .players
-            .iter()
-            .map(|(id, p)| (id.clone(), p.deck.clone()))
-            .collect();
-
-        (decks, self.upcard)
     }
 
     pub fn deal(&mut self, turn: Turn) -> Result<DealState, TurnError> {
@@ -70,19 +58,16 @@ impl Game {
             return Err(TurnError::BiddingStageActive);
         }
 
+        let current_dealer = self.peek_current_dealer();
+
         let player = self
             .players
             .get_mut(&turn.player_id)
             .ok_or(TurnError::InvalidPlayer)?;
 
-        let current_dealer = self
-            .round_iter
-            .peek()
-            .expect("Should have a current dealer");
-
-        if current_dealer != &turn.player_id {
+        if current_dealer.as_ref() != Some(&turn.player_id) {
             return Err(TurnError::NotYourTurn {
-                expected: current_dealer.clone(),
+                expected: current_dealer,
             });
         }
 
@@ -95,75 +80,49 @@ impl Game {
         //add card to the heap
         self.pile.push((self.get_card_value(turn.card), turn));
 
-        //finish set
-        if self.players.iter().all(|(_, p)| p.deck.is_empty()) {
+        //finish set/game
+        if self.alive_players().all(|(_, p)| p.deck.is_empty()) {
             let pile = self.award_points();
             self.remove_lifes();
-            self.remove_losers();
 
-            let first = self.bidding_iter.advance();
+            let players_alive: Vec<_> = self.alive_players().collect();
 
-            let players_alive = self.players.iter().filter(|(_, p)| p.lifes > 0);
-
-            //finish game
-            let evt = if players_alive.count() < 2 {
-                let winner = match self.players.len() == 1 {
-                    true => Some(self.players.first().expect("Should contain one").0.clone()),
-                    false => None,
-                };
-
-                GameEvent::Ended {
-                    winner,
+            let evt = match players_alive.len() {
+                0 => GameEvent::Ended {
+                    winner: None,
                     lifes: self.get_lifes(),
-                }
-            } else {
-                self.start_new_set();
-
-                let (decks, upcard) = self.clone_decks();
-
-                GameEvent::SetEnded {
+                },
+                1 => GameEvent::Ended {
+                    winner: Some(players_alive[0].0.clone()),
                     lifes: self.get_lifes(),
-                    possible: self.get_possible_bids(),
-                    first,
-                    upcard,
-                    decks,
+                },
+                _ => {
+                    self.start_new_set();
+
+                    let (decks, upcard) = self.get_decks();
+
+                    GameEvent::SetEnded {
+                        lifes: self.get_lifes(),
+                        possible: self.get_possible_bids(),
+                        first: self.get_bidding_player(),
+                        upcard,
+                        decks,
+                    }
                 }
             };
 
             return self.deal_round_data(pile, Some(evt));
         }
 
-        // finish round
-        if self.pile.len() == self.players.len() {
+        //finish round
+        if self.pile.len() == self.alive_players().count() {
             let pile = self.award_points();
 
             let evt = GameEvent::RoundEnded(self.get_points());
             return self.deal_round_data(pile, Some(evt));
         }
 
-        self.deal_round_data(self.clone_pile(), None)
-    }
-
-    fn deal_round_data(
-        &mut self,
-        pile: Vec<Turn>,
-        event: Option<GameEvent>,
-    ) -> Result<DealState, TurnError> {
-        self.round_iter.next();
-
-        let info = match self.round_iter.peek() {
-            Some(n) => RoundInfo::new(n.clone(), RoundState::Active),
-            None => {
-                let next = match matches!(event, Some(GameEvent::RoundEnded(_))) {
-                    true => self.round_iter.set_on(&pile[0].player_id),
-                    false => self.round_iter.advance(),
-                };
-
-                RoundInfo::new(next, RoundState::Ended)
-            }
-        };
-
-        Ok(DealState { info, pile, event })
+        self.deal_round_data(self.get_pile(), None)
     }
 
     pub fn bid(
@@ -179,16 +138,16 @@ impl Game {
             return Err(BiddingError::BidOutOfRange);
         }
 
+        let current_bidder = self.peek_current_bidder();
+
+        if Some(player_id) != current_bidder.as_ref() {
+            return Err(BiddingError::NotYourTurn);
+        }
+
         let player = self
             .players
             .get_mut(player_id)
             .ok_or(BiddingError::InvalidPlayer)?;
-
-        let current_bidder = self.bidding_iter.peek();
-
-        if Some(player_id) != current_bidder {
-            return Err(BiddingError::NotYourTurn);
-        }
 
         if player.bid.is_some() {
             return Err(BiddingError::AlreadyBidded);
@@ -200,41 +159,29 @@ impl Game {
 
         let possible = self.get_possible_bids();
 
-        let info = match self.bidding_iter.peek() {
-            Some(n) => RoundInfo::new(n.clone(), RoundState::Active),
+        let info = match self.peek_current_bidder() {
+            Some(n) => RoundInfo::new(n, RoundState::Active),
             None => {
-                self.bidding_iter.advance();
-
-                let next = self.round_iter.peek().expect("Expected first dealer");
-
-                RoundInfo::new(next.clone(), RoundState::Ended)
+                self.advance_bidder();
+                let next = self.peek_current_dealer().expect("Should have a dealer");
+                RoundInfo::new(next, RoundState::Ended)
             }
         };
 
         Ok((info, possible))
     }
 
-    fn validate_bid(&mut self, bid: usize) -> bool {
-        let last = self.bidding_iter.peek_next().is_none();
+    pub fn get_bidding_player(&self) -> String {
+        let idx = match self.bidding_iter.peek() {
+            Some(i) => i,
+            None => {
+                let msg = "InvalidGameState getting bid player";
+                tracing::error!(msg);
+                panic!("{msg}");
+            }
+        };
 
-        bid <= self.cards_count && !self.makes_perfect_bidding_round(bid, last)
-    }
-
-    fn makes_perfect_bidding_round(&self, bid: usize, last: bool) -> bool {
-        let current_bidding: usize = self
-            .players
-            .iter()
-            .map(|(_, p)| p.bid.unwrap_or_default())
-            .sum();
-
-        last && bid + current_bidding == self.cards_count
-    }
-
-    pub fn current_bidding_player(&self) -> String {
-        self.bidding_iter
-            .peek()
-            .expect("Should have a player")
-            .clone()
+        self.get_player(idx)
     }
 
     pub fn get_possible_bids(&self) -> Vec<usize> {
@@ -249,28 +196,123 @@ impl Game {
         }
     }
 
-    pub fn clone_pile(&self) -> Vec<Turn> {
+    pub fn get_decks(&self) -> (IndexMap<String, Vec<Card>>, Card) {
+        let decks = self
+            .alive_players()
+            .map(|(id, p)| (id.clone(), p.deck.clone()))
+            .collect();
+
+        (decks, self.upcard)
+    }
+
+    pub fn get_game_info(&self, player_id: &str) -> GameInfoDto {
+        let player = self
+            .players
+            .get(player_id)
+            .expect("Player should exist here");
+
+        let deck = player.deck.clone();
+
+        let info = self
+            .alive_players()
+            .map(|(id, p)| PlayerInfoDto {
+                id: id.clone(),
+                lifes: p.lifes,
+                bid: p.bid.expect("Should have a bid by now"),
+                rounds: p.rounds,
+            })
+            .collect();
+
+        let current_player = match self.get_cycle_stage() {
+            CycleStage::Dealing => self.peek_current_dealer(),
+            CycleStage::Bidding => self.peek_current_bidder(),
+        }
+        .expect("Should contain an active player")
+        .to_string();
+
+        GameInfoDto {
+            deck,
+            info,
+            current_player,
+        }
+    }
+
+    fn get_pile(&self) -> Vec<Turn> {
         self.pile.iter().cloned().map(|(_, t)| t).collect()
     }
 
+    fn deal_round_data(
+        &mut self,
+        pile: Vec<Turn>,
+        event: Option<GameEvent>,
+    ) -> Result<DealState, TurnError> {
+        self.round_iter.next();
+
+        let info = match self.peek_current_dealer() {
+            Some(n) => RoundInfo::new(n.to_string(), RoundState::Active),
+            None => {
+                let next = match event {
+                    Some(GameEvent::RoundEnded(_)) => {
+                        let player_id = &pile[0].player_id;
+
+                        let idx = self
+                            .players
+                            .get_index_of(player_id)
+                            .expect("Player should be in the IndexMap");
+
+                        self.round_iter.reset_on(idx)
+                    }
+                    _ => {
+                        self.round_iter.advance();
+                        self.bidding_iter.peek().expect("Expected bidder")
+                    }
+                };
+
+                RoundInfo::new(self.get_player(next), RoundState::Ended)
+            }
+        };
+
+        Ok(DealState { info, pile, event })
+    }
+
+    fn validate_bid(&mut self, bid: usize) -> bool {
+        let last = self.bidding_iter.peek_next().is_none();
+
+        bid <= self.cards_count && !self.makes_perfect_bidding_round(bid, last)
+    }
+
+    fn makes_perfect_bidding_round(&self, bid: usize, last: bool) -> bool {
+        let current_bidding: usize = self
+            .alive_players()
+            .map(|(_, p)| p.bid.unwrap_or_default())
+            .sum();
+
+        last && bid + current_bidding == self.cards_count
+    }
+
     fn get_cycle_stage(&self) -> CycleStage {
-        match self.players.values().any(|p| p.bid.is_none()) {
+        match self.alive_players().any(|(_, p)| p.bid.is_none()) {
             true => CycleStage::Bidding,
             false => CycleStage::Dealing,
         }
     }
 
     fn start_new_set(&mut self) {
-        let (mode, count) =
-            Self::get_new_cards_mode(self.dealing_mode, self.cards_count, self.players.len());
+        let (mode, count) = Self::get_new_cards_mode(
+            self.dealing_mode,
+            self.cards_count,
+            self.alive_players().count(),
+        );
 
         self.dealing_mode = mode;
         self.cards_count = count;
 
         let mut deck = Card::shuffled_deck();
 
-        for (_, player) in self.players.iter_mut() {
-            player.deck = deck.drain(..self.cards_count).collect();
+        let n = self.cards_count;
+
+        for (_, player) in self.alive_players_mut() {
+            player.deck = deck.drain(..n).collect();
             player.bid = None;
         }
 
@@ -313,30 +355,20 @@ impl Game {
 
     fn remove_lifes(&mut self) {
         let lost = self
-            .players
-            .iter_mut()
+            .alive_players_mut()
             .filter(|(_, p)| p.bid != Some(p.rounds));
 
         for (_, player) in lost {
             player.lifes -= 1;
         }
 
-        for (_, p) in self.players.iter_mut() {
+        for (_, p) in self.alive_players_mut() {
             p.rounds = 0;
         }
     }
 
-    fn remove_losers(&mut self) {
-        self.players.retain(|_, p| p.lifes != 0);
-
-        let player_names: Vec<_> = self.players.keys().cloned().collect();
-
-        self.bidding_iter = CyclicIterator::new(player_names.clone());
-        self.round_iter = CyclicIterator::new(player_names);
-    }
-
     fn award_points(&mut self) -> Vec<Turn> {
-        let pile = self.clone_pile();
+        let pile = self.get_pile();
 
         let (_, winner) = self.pile.pop().expect("Should contain a turn");
 
@@ -355,15 +387,13 @@ impl Game {
     }
 
     fn get_points(&self) -> HashMap<String, usize> {
-        self.players
-            .iter()
+        self.alive_players()
             .map(|(id, player)| (id.clone(), player.rounds))
             .collect()
     }
 
     fn get_lifes(&self) -> HashMap<String, usize> {
-        self.players
-            .iter()
+        self.alive_players()
             .map(|(id, player)| (id.clone(), player.lifes))
             .collect()
     }
@@ -378,50 +408,50 @@ impl Game {
         }
     }
 
-    pub fn get_info(&self, player_id: &str) -> GameInfoDto {
-        let player = self
-            .players
-            .get(player_id)
-            .expect("Player should exist here");
+    fn peek_current_dealer(&self) -> Option<String> {
+        self.round_iter.peek().map(|i| self.get_player(i))
+    }
 
-        let deck = player.deck.clone();
-
-        let info = self
-            .players
-            .iter()
-            .map(|(id, p)| PlayerInfoDto {
-                id: id.clone(),
-                lifes: p.lifes,
-                bid: p.bid.expect("Should have a bid by now"),
-                rounds: p.rounds,
-            })
-            .collect();
-
-        let current_player = match self.get_cycle_stage() {
-            CycleStage::Dealing => self.round_iter.peek(),
-            CycleStage::Bidding => self.bidding_iter.peek(),
-        }
-        .expect("Expected to have an item")
-        .clone();
-
-        GameInfoDto {
-            deck,
-            info,
-            current_player,
+    fn get_player(&self, idx: usize) -> String {
+        match self.players.get_index(idx) {
+            Some(p) => p.0.to_string(),
+            None => {
+                let msg = format!("InvalidGameState: invalid player index: {idx}");
+                tracing::error!(msg);
+                panic!("{msg}");
+            }
         }
     }
-}
 
-fn validate_game(players: &[String]) -> Result<(), GameError> {
-    if players.len() < 2 {
-        return Err(GameError::NotEnoughPlayers);
+    fn advance_bidder(&mut self) -> String {
+        let idx = self.bidding_iter.advance();
+
+        self.get_player(idx)
     }
 
-    if players.len() > MAX_PLAYER_COUNT {
-        return Err(GameError::TooManyPlayers);
+    fn peek_current_bidder(&self) -> Option<String> {
+        self.bidding_iter.peek().map(|i| self.get_player(i))
     }
 
-    Ok(())
+    fn validate_game(players: &[String]) -> Result<(), GameError> {
+        if players.len() < 2 {
+            return Err(GameError::NotEnoughPlayers);
+        }
+
+        if players.len() > MAX_PLAYER_COUNT {
+            return Err(GameError::TooManyPlayers);
+        }
+
+        Ok(())
+    }
+
+    fn alive_players(&self) -> impl Iterator<Item = (&String, &Player)> {
+        self.players.iter().filter(|(_, p)| p.lifes > 0)
+    }
+
+    fn alive_players_mut(&mut self) -> impl Iterator<Item = (&String, &mut Player)> {
+        self.players.iter_mut().filter(|(_, p)| p.lifes > 0)
+    }
 }
 
 #[cfg(test)]
@@ -437,12 +467,12 @@ mod tests {
         assert!(game.pile.is_empty());
 
         let (info, _) = game.bid(&player1, 1).unwrap();
-        assert_eq!(info.next, player2);
         assert_eq!(info.state, RoundState::Active);
+        assert_eq!(info.next, player2);
 
         let (info, _) = game.bid(&player2, 1).unwrap();
-        assert_eq!(info.next, player1);
         assert_eq!(info.state, RoundState::Ended);
+        assert_eq!(info.next, player1);
 
         let first_played_card = game.players[&player1].deck[0];
         let first_turn = Turn {
@@ -481,12 +511,12 @@ mod tests {
         assert!(winners_count == 1);
 
         let (info, _) = game.bid(&player2, 2).unwrap();
-        assert_eq!(info.next, player1);
         assert_eq!(info.state, RoundState::Active);
+        assert_eq!(info.next, player1);
 
         let (info, _) = game.bid(&player1, 2).unwrap();
-        assert_eq!(info.next, player2);
         assert_eq!(info.state, RoundState::Ended);
+        assert_eq!(info.next, player2);
     }
 
     #[test]
