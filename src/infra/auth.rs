@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, str::FromStr, sync::OnceLock};
+use std::{net::SocketAddr, sync::OnceLock};
 
 use axum::{
     extract::{ConnectInfo, Request, State},
@@ -12,7 +12,6 @@ use jsonwebtoken::{
     jwk::{Jwk, JwkSet},
     DecodingKey, EncodingKey, Header, TokenData, Validation,
 };
-use mongodb::bson::oid::ObjectId;
 use serde_json::json;
 
 use crate::services::{manager::Manager, repositories::auth::LoginDto};
@@ -69,11 +68,6 @@ async fn update_profile(
         }
     };
 
-    if ObjectId::from_str(&claim.id).is_err() {
-        let response = (StatusCode::UNPROCESSABLE_ENTITY, "Invalid ObjectId");
-        return Err(response.into_response());
-    };
-
     Ok(generate_token(params, manager, who, claim.id).await)
 }
 
@@ -82,7 +76,18 @@ async fn login(
     ConnectInfo(who): ConnectInfo<SocketAddr>,
     Json(params): Json<ProfileParams>,
 ) -> Json<TokenResponse> {
-    generate_token(params, manager, who, ObjectId::new().to_hex()).await
+    generate_token(params, manager, who, generate_username()).await
+}
+
+const ALPHABET: [char; 67] = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
+    'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_', 'a',
+    'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+    'u', 'v', 'w', 'x', 'y', 'z', '-', '.', '!', '*',
+];
+
+fn generate_username() -> String {
+    nanoid::nanoid!(10, &ALPHABET)
 }
 
 async fn generate_token(

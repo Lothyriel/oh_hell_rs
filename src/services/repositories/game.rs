@@ -1,9 +1,5 @@
 use chrono::{DateTime, Utc};
-use mongodb::{
-    bson::{doc, oid::ObjectId},
-    error::Result,
-    Collection, Database,
-};
+use mongodb::{bson::doc, error::Result, Collection, Database};
 
 use crate::models::Card;
 
@@ -41,7 +37,7 @@ pub struct GameDto {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct TurnDto {
-    game_id: ObjectId,
+    game_id: String,
     player_id: String,
     time: DateTime<Utc>,
     card: Card,
