@@ -1,50 +1,49 @@
 #[derive(Debug)]
 pub struct CyclicIterator {
-    items_count: usize,
+    items: Vec<usize>,
     current_index: usize,
-    iteration_count: usize,
 }
 
 impl CyclicIterator {
     pub fn new(count: usize) -> Self {
         CyclicIterator {
-            items_count: count,
+            items: (0..count).collect(),
             current_index: 0,
-            iteration_count: 0,
         }
     }
 
-    pub fn advance(&mut self) -> usize {
-        self.iteration_count = 0;
-        let current = self.current_index;
-        self.current_index = (self.current_index + 1) % self.items_count;
-        current
+    pub fn shift(&mut self) {
+        self.reset();
+
+        if !self.items.is_empty() {
+            self.items.rotate_left(1);
+        }
     }
 
-    pub fn reset(&mut self) -> usize {
-        self.iteration_count = 0;
-        self.current_index
-    }
-
-    pub fn reset_on(&mut self, idx: usize) -> usize {
-        self.current_index = idx;
-        self.reset()
+    pub fn shift_to(&mut self, item: usize) -> Option<()> {
+        self.reset();
+        let idx = self.items.iter().position(|&i| i == item)?;
+        let n = self.items.len();
+        self.items.rotate_right(n - idx);
+        Some(())
     }
 
     pub fn peek(&self) -> Option<usize> {
-        if self.iteration_count < self.items_count {
-            Some(self.current_index)
-        } else {
-            None
-        }
+        self.items.get(self.current_index).copied()
     }
 
     pub fn peek_next(&self) -> Option<usize> {
-        if self.iteration_count + 1 < self.items_count {
-            Some((self.current_index + 1) % self.items_count)
-        } else {
-            None
-        }
+        self.items.get(self.current_index + 1).copied()
+    }
+
+    pub fn remove(&mut self, item: usize) -> Option<usize> {
+        let idx = self.items.iter().position(|&i| i == item)?;
+        self.items.remove(idx);
+        Some(idx)
+    }
+
+    fn reset(&mut self) {
+        self.current_index = 0;
     }
 }
 
@@ -52,16 +51,11 @@ impl Iterator for CyclicIterator {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.iteration_count < self.items_count {
-            let current = Some(self.current_index);
+        let current = self.items.get(self.current_index).copied();
 
-            self.iteration_count += 1;
-            self.current_index = (self.current_index + 1) % self.items_count;
+        self.current_index += 1;
 
-            current
-        } else {
-            None
-        }
+        current
     }
 }
 
@@ -70,19 +64,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_basic_iteration() {
+    fn test_shift() {
         let mut cyclic = CyclicIterator::new(5);
 
         let result: Vec<_> = cyclic.by_ref().collect();
         assert_eq!(result, vec![0, 1, 2, 3, 4]);
 
-        cyclic.advance();
+        cyclic.shift();
         let result: Vec<_> = cyclic.by_ref().collect();
         assert_eq!(result, vec![1, 2, 3, 4, 0]);
 
-        cyclic.advance();
-        let result: Vec<_> = cyclic.collect();
+        cyclic.shift();
+        let result: Vec<_> = cyclic.by_ref().collect();
         assert_eq!(result, vec![2, 3, 4, 0, 1]);
+
+        cyclic.reset();
+        let result: Vec<_> = cyclic.by_ref().collect();
+        assert_eq!(result, vec![2, 3, 4, 0, 1]);
+    }
+
+    #[test]
+    fn test_shift_to() {
+        let mut cyclic = CyclicIterator::new(5);
+
+        let result: Vec<_> = cyclic.by_ref().collect();
+        assert_eq!(result, vec![0, 1, 2, 3, 4]);
+
+        cyclic.shift_to(4);
+        let result: Vec<_> = cyclic.by_ref().collect();
+        assert_eq!(result, vec![4, 0, 1, 2, 3]);
+
+        cyclic.shift_to(2);
+        let result: Vec<_> = cyclic.by_ref().collect();
+        assert_eq!(result, vec![2, 3, 4, 0, 1]);
+
+        cyclic.shift_to(3);
+        let result: Vec<_> = cyclic.by_ref().collect();
+        assert_eq!(result, vec![3, 4, 0, 1, 2]);
     }
 
     #[test]
@@ -102,5 +120,38 @@ mod tests {
         cyclic.reset();
 
         assert_eq!(cyclic.next(), None);
+    }
+
+    #[test]
+    fn test_remove() {
+        //[0,1,2,3,4]
+        let mut cyclic = CyclicIterator::new(5);
+
+        //[1,2,3,4,0]
+        cyclic.shift();
+        //[2,3,4,0,1]
+        cyclic.shift();
+
+        let result: Vec<_> = cyclic.by_ref().collect();
+        assert_eq!(result, vec![2, 3, 4, 0, 1]);
+        cyclic.reset();
+
+        //[2,3,4,1]
+        cyclic.remove(0);
+        let result: Vec<_> = cyclic.by_ref().collect();
+        assert_eq!(result, vec![2, 3, 4, 1]);
+        cyclic.reset();
+
+        //[2,3,1]
+        cyclic.remove(4);
+        let result: Vec<_> = cyclic.by_ref().collect();
+        assert_eq!(result, vec![2, 3, 1]);
+        cyclic.reset();
+
+        //[3,1]
+        cyclic.remove(2);
+        let result: Vec<_> = cyclic.by_ref().collect();
+        assert_eq!(result, vec![3, 1]);
+        cyclic.reset();
     }
 }
