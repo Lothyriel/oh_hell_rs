@@ -12,7 +12,7 @@ use tokio::sync::Mutex;
 use crate::{
     infra::{self, auth::UserClaims, GetLobbyDto, ServerMessage},
     models::{
-        BiddingError, Card, Game, GameError, GameEvent, LobbyState, RoundState, Turn, TurnError,
+        BiddingError, BiddingState, Card, Game, GameError, GameEvent, LobbyState, Turn, TurnError,
     },
 };
 
@@ -135,37 +135,31 @@ impl Manager {
         self.broadcast_msg(&players, &msg).await;
 
         match state.event {
-            Some(GameEvent::SetEnded {
+            GameEvent::SetEnded {
                 lifes,
                 upcard,
                 decks,
-                first,
+                next,
                 possible,
-            }) => {
+            } => {
                 let msg = ServerMessage::SetEnded(lifes);
                 self.broadcast_msg(&players, &msg).await;
 
-                self.init_set(decks, first, upcard, possible).await;
+                self.init_set(decks, next, upcard, possible).await;
             }
-            Some(GameEvent::RoundEnded(points)) => {
-                let msg = ServerMessage::RoundEnded(points);
+            GameEvent::RoundEnded { rounds, next } => {
+                let msg = ServerMessage::RoundEnded(rounds);
                 self.broadcast_msg(&players, &msg).await;
 
-                let msg = ServerMessage::PlayerTurn {
-                    player_id: state.info.next,
-                };
-
+                let msg = ServerMessage::PlayerTurn { player_id: next };
                 self.broadcast_msg(&players, &msg).await;
             }
-            Some(GameEvent::Ended { winner, lifes }) => {
+            GameEvent::TurnPlayed { next } => {
+                let msg = ServerMessage::PlayerTurn { player_id: next };
+                self.broadcast_msg(&players, &msg).await;
+            }
+            GameEvent::Ended { winner, lifes } => {
                 let msg = ServerMessage::GameEnded { winner, lifes };
-                self.broadcast_msg(&players, &msg).await;
-            }
-            None => {
-                let msg = ServerMessage::PlayerTurn {
-                    player_id: state.info.next,
-                };
-
                 self.broadcast_msg(&players, &msg).await;
             }
         }
@@ -174,7 +168,7 @@ impl Manager {
     }
 
     pub async fn bid(&self, bid: usize, player_id: String) -> Result<(), LobbyError> {
-        let (players, info, possible_bids) = {
+        let (players, state) = {
             let mut manager = self.inner.lobby.lock().await;
 
             let lobby_id = {
@@ -192,24 +186,25 @@ impl Manager {
 
             let game = lobby.get_game()?;
 
-            let info = game
+            let state = game
                 .bid(&player_id, bid)
                 .map_err(|e| LobbyError::GameError(GameError::InvalidBid(e)))?;
 
-            (lobby.get_players_id(), info.0, info.1)
+            (lobby.get_players_id(), state)
         };
 
         let msg = ServerMessage::PlayerBidded { player_id, bid };
         self.broadcast_msg(&players, &msg).await;
 
-        let msg = match info.state {
-            RoundState::Active => ServerMessage::PlayerBiddingTurn {
-                player_id: info.next,
+        let msg = match state {
+            BiddingState::Active {
+                possible_bids,
+                next,
+            } => ServerMessage::PlayerBiddingTurn {
+                player_id: next,
                 possible_bids,
             },
-            RoundState::Ended => ServerMessage::PlayerTurn {
-                player_id: info.next,
-            },
+            BiddingState::Ended { next } => ServerMessage::PlayerTurn { player_id: next },
         };
 
         self.broadcast_msg(&players, &msg).await;
@@ -351,7 +346,7 @@ impl Manager {
     async fn init_set(
         &self,
         decks: IndexMap<String, Vec<Card>>,
-        first: String,
+        next: String,
         upcard: Card,
         possible_bids: Vec<usize>,
     ) {
@@ -367,7 +362,7 @@ impl Manager {
         }
 
         let msg = ServerMessage::PlayerBiddingTurn {
-            player_id: first,
+            player_id: next,
             possible_bids,
         };
 

@@ -144,38 +144,36 @@ pub enum GameEvent {
         lifes: HashMap<String, usize>,
         upcard: Card,
         decks: IndexMap<String, Vec<Card>>,
-        first: String,
+        next: String,
         possible: Vec<usize>,
     },
-    RoundEnded(HashMap<String, usize>),
+    RoundEnded {
+        next: String,
+        rounds: HashMap<String, usize>,
+    },
     Ended {
         winner: Option<String>,
         lifes: HashMap<String, usize>,
     },
+    TurnPlayed {
+        next: String,
+    },
 }
 
 pub struct DealState {
-    pub info: RoundInfo,
-    pub event: Option<GameEvent>,
+    pub event: GameEvent,
     pub pile: Vec<Turn>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct RoundInfo {
-    pub next: String,
-    pub state: RoundState,
-}
-
-impl RoundInfo {
-    fn new(next: String, state: RoundState) -> Self {
-        Self { next, state }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum RoundState {
-    Active,
-    Ended,
+pub enum BiddingState {
+    Active {
+        next: String,
+        possible_bids: Vec<usize>,
+    },
+    Ended {
+        next: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

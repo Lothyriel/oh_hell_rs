@@ -8,8 +8,8 @@ use crate::{
 };
 
 use super::{
-    iter::CyclicIterator, BiddingError, Card, DealState, DealingMode, GameEvent, Player, RoundInfo,
-    RoundState, Turn, TurnError,
+    iter::CyclicIterator, BiddingError, BiddingState, Card, DealState, DealingMode, GameEvent,
+    Player, Turn, TurnError,
 };
 
 #[derive(Debug)]
@@ -79,15 +79,17 @@ impl Game {
 
         //add card to the heap
         self.pile.push((self.get_card_value(turn.card), turn));
+        self.round_iter.next();
 
         //finish set/game
         if self.alive_players().all(|(_, p)| p.deck.is_empty()) {
             let pile = self.award_points();
             self.remove_lifes();
+            self.round_iter.shift();
 
             let players_alive: Vec<_> = self.alive_players().collect();
 
-            let evt = match players_alive.len() {
+            let event = match players_alive.len() {
                 0 => GameEvent::Ended {
                     winner: None,
                     lifes: self.get_lifes(),
@@ -104,32 +106,48 @@ impl Game {
                     GameEvent::SetEnded {
                         lifes: self.get_lifes(),
                         possible: self.get_possible_bids(),
-                        first: self.get_bidding_player(),
+                        next: self.get_bidding_player(),
                         upcard,
                         decks,
                     }
                 }
             };
 
-            return self.deal_round_data(pile, Some(evt));
+            return Ok(DealState { event, pile });
         }
 
         //finish round
         if self.pile.len() == self.alive_players().count() {
             let pile = self.award_points();
 
-            let evt = GameEvent::RoundEnded(self.get_points());
-            return self.deal_round_data(pile, Some(evt));
+            let player_id = &pile[0].player_id;
+
+            let idx = self
+                .players
+                .get_index_of(player_id)
+                .expect("Player should be in the IndexMap");
+
+            self.round_iter.shift_to(idx);
+
+            let event = GameEvent::RoundEnded {
+                next: player_id.clone(),
+                rounds: self.get_points(),
+            };
+
+            return Ok(DealState { event, pile });
         }
 
-        self.deal_round_data(self.get_pile(), None)
+        let event = GameEvent::TurnPlayed {
+            next: self.peek_current_dealer().expect("Should have a dealer"),
+        };
+
+        Ok(DealState {
+            pile: self.get_pile(),
+            event,
+        })
     }
 
-    pub fn bid(
-        &mut self,
-        player_id: &String,
-        bid: usize,
-    ) -> Result<(RoundInfo, Vec<usize>), BiddingError> {
+    pub fn bid(&mut self, player_id: &String, bid: usize) -> Result<BiddingState, BiddingError> {
         if self.get_cycle_stage() == CycleStage::Dealing {
             return Err(BiddingError::DealingStageActive);
         }
@@ -157,18 +175,19 @@ impl Game {
 
         self.bidding_iter.next();
 
-        let possible = self.get_possible_bids();
-
-        let info = match self.peek_current_bidder() {
-            Some(n) => RoundInfo::new(n, RoundState::Active),
+        let state = match self.peek_current_bidder() {
+            Some(next) => BiddingState::Active {
+                next,
+                possible_bids: self.get_possible_bids(),
+            },
             None => {
-                self.advance_bidder();
+                self.bidding_iter.shift();
                 let next = self.peek_current_dealer().expect("Should have a dealer");
-                RoundInfo::new(next, RoundState::Ended)
+                BiddingState::Ended { next }
             }
         };
 
-        Ok((info, possible))
+        Ok(state)
     }
 
     pub fn get_bidding_player(&self) -> String {
@@ -239,40 +258,6 @@ impl Game {
 
     fn get_pile(&self) -> Vec<Turn> {
         self.pile.iter().cloned().map(|(_, t)| t).collect()
-    }
-
-    fn deal_round_data(
-        &mut self,
-        pile: Vec<Turn>,
-        event: Option<GameEvent>,
-    ) -> Result<DealState, TurnError> {
-        self.round_iter.next();
-
-        let info = match self.peek_current_dealer() {
-            Some(n) => RoundInfo::new(n.to_string(), RoundState::Active),
-            None => {
-                let next = match event {
-                    Some(GameEvent::RoundEnded(_)) => {
-                        let player_id = &pile[0].player_id;
-
-                        let idx = self
-                            .players
-                            .get_index_of(player_id)
-                            .expect("Player should be in the IndexMap");
-
-                        self.round_iter.reset_on(idx)
-                    }
-                    _ => {
-                        self.round_iter.advance();
-                        self.bidding_iter.peek().expect("Expected bidder")
-                    }
-                };
-
-                RoundInfo::new(self.get_player(next), RoundState::Ended)
-            }
-        };
-
-        Ok(DealState { info, pile, event })
     }
 
     fn validate_bid(&mut self, bid: usize) -> bool {
@@ -365,6 +350,17 @@ impl Game {
         for (_, p) in self.alive_players_mut() {
             p.rounds = 0;
         }
+
+        let unalive_players = self
+            .players
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, p))| p.lifes == 0);
+
+        for (idx, _) in unalive_players {
+            self.round_iter.remove(idx);
+            self.bidding_iter.remove(idx);
+        }
     }
 
     fn award_points(&mut self) -> Vec<Turn> {
@@ -378,8 +374,6 @@ impl Game {
             .players
             .get_mut(&winner.player_id)
             .expect("This player should exist here");
-
-        //self.round_iter.set_on(&winner.player_id);
 
         player.rounds += 1;
 
@@ -423,12 +417,6 @@ impl Game {
         }
     }
 
-    fn advance_bidder(&mut self) -> String {
-        let idx = self.bidding_iter.advance();
-
-        self.get_player(idx)
-    }
-
     fn peek_current_bidder(&self) -> Option<String> {
         self.bidding_iter.peek().map(|i| self.get_player(i))
     }
@@ -466,13 +454,13 @@ mod tests {
         let mut game = Game::new_default(vec![player1.clone(), player2.clone()]).unwrap();
         assert!(game.pile.is_empty());
 
-        let (info, _) = game.bid(&player1, 1).unwrap();
-        assert_eq!(info.state, RoundState::Active);
-        assert_eq!(info.next, player2);
+        let state = game.bid(&player1, 1).unwrap();
+        assert!(
+            matches!(state, BiddingState::Active { next, possible_bids: _ } if next == player2)
+        );
 
-        let (info, _) = game.bid(&player2, 1).unwrap();
-        assert_eq!(info.state, RoundState::Ended);
-        assert_eq!(info.next, player1);
+        let state = game.bid(&player2, 1).unwrap();
+        assert!(matches!(state, BiddingState::Ended { next } if next == player1));
 
         let first_played_card = game.players[&player1].deck[0];
         let first_turn = Turn {
@@ -495,13 +483,13 @@ mod tests {
 
         assert!(matches!(
             state.event,
-            Some(GameEvent::SetEnded {
+            GameEvent::SetEnded {
                 lifes: _,
                 upcard: _,
                 decks: _,
-                first: _,
+                next: _,
                 possible: _
-            })
+            }
         ));
 
         assert!(state.pile.len() == 2);
@@ -510,13 +498,13 @@ mod tests {
 
         assert!(winners_count == 1);
 
-        let (info, _) = game.bid(&player2, 2).unwrap();
-        assert_eq!(info.state, RoundState::Active);
-        assert_eq!(info.next, player1);
+        let state = game.bid(&player2, 2).unwrap();
+        assert!(
+            matches!(state, BiddingState::Active { next, possible_bids: _ } if next == player1)
+        );
 
-        let (info, _) = game.bid(&player1, 2).unwrap();
-        assert_eq!(info.state, RoundState::Ended);
-        assert_eq!(info.next, player2);
+        let state = game.bid(&player1, 2).unwrap();
+        assert!(matches!(state, BiddingState::Ended { next } if next == player2));
     }
 
     #[test]
@@ -529,9 +517,10 @@ mod tests {
         let possible = game.get_possible_bids();
         assert_eq!(possible, vec![0, 1]);
 
-        let (info, _) = game.bid(&player1, 1).unwrap();
-        assert_eq!(info.next, player2);
-        assert_eq!(info.state, RoundState::Active);
+        let state = game.bid(&player1, 1).unwrap();
+        assert!(
+            matches!(state, BiddingState::Active { next, possible_bids: _ } if next == player2)
+        );
 
         let result = game.bid(&player2, 0);
         assert_eq!(result, Err(BiddingError::BidOutOfRange));
