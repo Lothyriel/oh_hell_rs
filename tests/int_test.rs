@@ -9,7 +9,7 @@ mod tests {
             lobby::CreateLobbyResponse,
             ClientGameMessage, ClientMessage, JoinLobbyDto, ServerMessage,
         },
-        models::Card,
+        models::{Card, MAX_PLAYER_COUNT},
     };
     use reqwest::Client;
     use tokio::{net::TcpStream, task};
@@ -21,27 +21,24 @@ mod tests {
     async fn test_example() {
         task::spawn(oh_hell::start_app());
 
-        let mut client = reqwest::Client::new();
+        for p in 2..=MAX_PLAYER_COUNT {
+            let mut client = reqwest::Client::new();
 
-        let tokens = get_players(&mut client, 2).await;
+            let tokens = get_players(&mut client, p).await;
 
-        let mut player_data = join_lobby(&mut client, tokens).await;
+            let mut player_data = join_lobby(&mut client, tokens).await;
 
-        ready(&mut player_data).await;
+            ready(&mut player_data).await;
 
-        let mut cards_count = 1;
+            'game: loop {
+                get_decks(&mut player_data).await;
 
-        'outer: loop {
-            get_decks(&mut player_data, cards_count).await;
+                play_set(&mut player_data).await;
 
-            // todo need to loop cycle the players between sets
-            play_set(&mut player_data, cards_count).await;
-
-            cards_count += 1;
-
-            for p in player_data.values_mut() {
-                if assert_game_or_set_ended(&mut p.connection).await {
-                    break 'outer;
+                for p in player_data.values_mut() {
+                    if assert_game_or_set_ended(&mut p.connection).await {
+                        break 'game;
+                    }
                 }
             }
         }
@@ -79,7 +76,9 @@ mod tests {
         }
     }
 
-    async fn play_set(players: &mut HashMap<String, PlayerData>, rounds_count: usize) {
+    async fn play_set(players: &mut HashMap<String, PlayerData>) {
+        let rounds_count = players.values().next().unwrap().deck.len();
+
         bidding(players, rounds_count).await;
 
         for i in 0..rounds_count {
@@ -152,17 +151,13 @@ mod tests {
         deck: Deck,
     }
 
-    async fn get_decks(players: &mut HashMap<String, PlayerData>, cards_count: usize) {
+    async fn get_decks(players: &mut HashMap<String, PlayerData>) {
         for p in players.values_mut() {
             assert_game_msg(&mut p.connection, validate_set_start).await;
         }
 
         for p in players.values_mut() {
-            let deck = get_deck(&mut p.connection).await;
-
-            assert!(deck.len() == cards_count);
-
-            p.deck = deck;
+            p.deck = get_deck(&mut p.connection).await;
         }
     }
 

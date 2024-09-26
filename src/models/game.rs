@@ -30,7 +30,7 @@ enum CycleStage {
 }
 
 const MAX_AVAILABLE_CARDS: usize = 40 - 1;
-const MAX_PLAYER_COUNT: usize = 10;
+pub const MAX_PLAYER_COUNT: usize = 13;
 
 impl Game {
     pub fn new_default(players: Vec<String>) -> Result<Self, GameError> {
@@ -249,8 +249,11 @@ impl Game {
         .expect("Should contain an active player")
         .to_string();
 
+        let upcard = self.upcard;
+
         GameInfoDto {
             deck,
+            upcard,
             info,
             current_player,
         }
@@ -527,6 +530,22 @@ mod tests {
 
         let possible = game.get_possible_bids();
         assert_eq!(possible, vec![1]);
+    }
+
+    #[test]
+    fn test_game_max_players() {
+        for p in 0..MAX_PLAYER_COUNT + 3 {
+            let players = (0..p).map(|i| i.to_string()).collect();
+            let result = Game::new_default(players);
+
+            match p {
+                2..=MAX_PLAYER_COUNT => assert!(matches!(result, Ok(g) if g.players.len() == p)),
+                0..=1 => {
+                    assert!(matches!(result, Err(e) if matches!(e, GameError::NotEnoughPlayers)))
+                }
+                _ => assert!(matches!(result, Err(e) if matches!(e, GameError::TooManyPlayers))),
+            }
+        }
     }
 
     #[test]
