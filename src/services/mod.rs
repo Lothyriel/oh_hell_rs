@@ -7,6 +7,7 @@ pub mod repositories;
 pub struct GameInfoDto {
     pub info: Vec<PlayerInfoDto>,
     pub deck: Vec<Card>,
+    pub upcard: Card,
     pub current_player: String,
 }
 
