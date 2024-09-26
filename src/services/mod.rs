@@ -17,5 +17,5 @@ pub struct PlayerInfoDto {
     pub id: String,
     pub lifes: usize,
     pub rounds: usize,
-    pub bid: usize,
+    pub bid: Option<usize>,
 }

@@ -237,7 +237,7 @@ impl Game {
             .map(|(id, p)| PlayerInfoDto {
                 id: id.clone(),
                 lifes: p.lifes,
-                bid: p.bid.expect("Should have a bid by now"),
+                bid: p.bid,
                 rounds: p.rounds,
             })
             .collect();
