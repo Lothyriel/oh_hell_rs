@@ -390,7 +390,8 @@ impl Game {
     }
 
     fn get_lifes(&self) -> HashMap<String, usize> {
-        self.alive_players()
+        self.players
+            .iter()
             .map(|(id, player)| (id.clone(), player.lifes))
             .collect()
     }
@@ -491,7 +492,7 @@ mod tests {
                 upcard: _,
                 decks: _,
                 next: _,
-                possible: _
+                possible: _,
             }
         ));
 

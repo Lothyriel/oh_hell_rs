@@ -76,7 +76,9 @@ pub enum ServerMessage {
     SetStart {
         upcard: Card,
     },
-    SetEnded(PlayerPoints),
+    SetEnded {
+        lifes: PlayerPoints,
+    },
     GameEnded {
         winner: Option<String>,
         lifes: PlayerPoints,

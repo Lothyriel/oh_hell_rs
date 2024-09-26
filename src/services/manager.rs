@@ -142,7 +142,7 @@ impl Manager {
                 next,
                 possible,
             } => {
-                let msg = ServerMessage::SetEnded(lifes);
+                let msg = ServerMessage::SetEnded { lifes };
                 self.broadcast_msg(&players, &msg).await;
 
                 self.init_set(decks, next, upcard, possible).await;

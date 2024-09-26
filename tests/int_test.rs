@@ -57,8 +57,8 @@ mod tests {
 
     async fn assert_game_or_set_ended(socket: &mut WebSocket) -> bool {
         match recv_msg(socket).await {
-            ServerMessage::SetEnded(lifes) => {
-                println!("Asserted game msg {:?}", ServerMessage::SetEnded(lifes));
+            ServerMessage::SetEnded { lifes } => {
+                println!("Asserted game msg {:?}", ServerMessage::SetEnded { lifes });
                 false
             }
             ServerMessage::GameEnded { winner, lifes } => {
