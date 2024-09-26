@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 
 use crate::{
     models::GameError,
-    services::{GameInfoDto, PlayerInfoDto},
+    services::{GameInfoDto, GameStageDto, PlayerInfoDto},
 };
 
 use super::{
@@ -23,8 +23,8 @@ pub struct Game {
     upcard: Card,
 }
 
-#[derive(PartialEq, serde::Serialize, serde::Deserialize, Debug, Eq, PartialOrd)]
-pub enum GameStage {
+#[derive(PartialEq, Debug, Eq)]
+enum GameStage {
     Dealing,
     Bidding,
 }
@@ -254,7 +254,12 @@ impl Game {
             upcard: self.upcard,
             info,
             current_player,
-            stage: self.get_stage(),
+            stage: match self.get_stage() {
+                GameStage::Dealing => GameStageDto::Dealing,
+                GameStage::Bidding => GameStageDto::Bidding {
+                    possible_bids: self.get_possible_bids(),
+                },
+            },
         }
     }
 
