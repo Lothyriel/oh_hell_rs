@@ -23,8 +23,8 @@ pub struct Game {
     upcard: Card,
 }
 
-#[derive(PartialEq, Debug)]
-enum CycleStage {
+#[derive(PartialEq, serde::Serialize, serde::Deserialize, Debug, Eq, PartialOrd)]
+pub enum GameStage {
     Dealing,
     Bidding,
 }
@@ -54,7 +54,7 @@ impl Game {
     }
 
     pub fn deal(&mut self, turn: Turn) -> Result<DealState, TurnError> {
-        if self.get_cycle_stage() == CycleStage::Bidding {
+        if self.get_stage() == GameStage::Bidding {
             return Err(TurnError::BiddingStageActive);
         }
 
@@ -148,7 +148,7 @@ impl Game {
     }
 
     pub fn bid(&mut self, player_id: &String, bid: usize) -> Result<BiddingState, BiddingError> {
-        if self.get_cycle_stage() == CycleStage::Dealing {
+        if self.get_stage() == GameStage::Dealing {
             return Err(BiddingError::DealingStageActive);
         }
 
@@ -242,20 +242,19 @@ impl Game {
             })
             .collect();
 
-        let current_player = match self.get_cycle_stage() {
-            CycleStage::Dealing => self.peek_current_dealer(),
-            CycleStage::Bidding => self.peek_current_bidder(),
+        let current_player = match self.get_stage() {
+            GameStage::Dealing => self.peek_current_dealer(),
+            GameStage::Bidding => self.peek_current_bidder(),
         }
         .expect("Should contain an active player")
         .to_string();
 
-        let upcard = self.upcard;
-
         GameInfoDto {
             deck,
-            upcard,
+            upcard: self.upcard,
             info,
             current_player,
+            stage: self.get_stage(),
         }
     }
 
@@ -278,10 +277,10 @@ impl Game {
         last && bid + current_bidding == self.cards_count
     }
 
-    fn get_cycle_stage(&self) -> CycleStage {
+    fn get_stage(&self) -> GameStage {
         match self.alive_players().any(|(_, p)| p.bid.is_none()) {
-            true => CycleStage::Bidding,
-            false => CycleStage::Dealing,
+            true => GameStage::Bidding,
+            false => GameStage::Dealing,
         }
     }
 

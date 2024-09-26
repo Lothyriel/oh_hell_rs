@@ -1,4 +1,4 @@
-use crate::models::Card;
+use crate::models::{Card, GameStage};
 
 pub mod manager;
 pub mod repositories;
@@ -9,6 +9,7 @@ pub struct GameInfoDto {
     pub deck: Vec<Card>,
     pub upcard: Card,
     pub current_player: String,
+    pub stage: GameStage,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
